@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,interactive-widget=resizes-content">
+<meta name="theme-color" content="#0A0005">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Healing Library">
+<meta name="mobile-web-app-capable" content="yes">
+<title>The Healing Library</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{height:100%;overflow:hidden}
+body{height:100%;overflow:hidden;background:#0A0005;color:#F0EAE8;font-family:Georgia,serif;-webkit-font-smoothing:antialiased;position:fixed;width:100%;top:0;left:0}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#2A1030;border-radius:2px}
+button{cursor:pointer;border:none;background:none}
+textarea,input{font-family:Georgia,serif;-webkit-user-select:text;user-select:text;touch-action:manipulation}
+textarea{resize:none}
+textarea:focus,input:focus{outline:none}
+.scroll{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+</style>
+</head>
+<body>
+<div id="root" style="height:100%;overflow:hidden;display:flex;flex-direction:column"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script type="text/babel">
+const {useState,useEffect,useCallback,useRef} = React;
+
+// ═══════════════════════════════════════════════
+// STORAGE — text data + ink data separately
+// ═══════════════════════════════════════════════
+const db = {
+  get:(k)=>{try{return JSON.parse(localStorage.getItem(k)||"{}")}catch{return{}}},
+  set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){console.warn("Storage full",e)}},
+  getInk:(k)=>{try{return localStorage.getItem("ink_"+k)||null}catch{return null}},
+  setInk:(k,v)=>{try{if(v)localStorage.setItem("ink_"+k,v);else localStorage.removeItem("ink_"+k)}catch(e){console.warn("Ink storage full",e)}}
+};
+
+// ═══════════════════════════════════════════════
+// PALETTES
+// ═══════════════════════════════════════════════
+const EP = {
+  bg:"#1A0008",panel:"#220010",card:"#2C0016",hover:"#380020",
+  border:"#580E2C",blight:"#8B2040",
+  gold:"#C8956A",glight:"#E8BFA0",gdark:"#9A6040",
+  title:"#C8956A",titleLight:"#E8BFA0",
+  text:"#F0E8EC",muted:"#9A7880",dim:"#5A3848",
+  ember:"#C05040",teal:"#6A1840",purple:"#7A2050",
+  ic:"#190008",wc:"#180004",gc:"#060A04",pc:"#150010",
+  marbleClass:"marble-emily",cardClass:"card-emily",
+};
+const GP = {
+  bg:"#050008",panel:"#09000D",card:"#100015",hover:"#180020",
+  border:"#280E3C",blight:"#481868",
+  gold:"#C9963A",glight:"#E8B86D",gdark:"#9A7018",
+  title:"#C9963A",titleLight:"#E8B86D",
+  text:"#EAE8F2",muted:"#887898",dim:"#483858",
+  ember:"#884518",teal:"#283070",purple:"#6040A0",
+  ic:"#08000F",wc:"#100006",gc:"#060A08",pc:"#100018",
+  marbleClass:"marble-greg",cardClass:"card-greg",
+};
+const CP = {
+  bg:"#03080A",panel:"#061210",card:"#0C1C18",hover:"#112820",
+  border:"#183C2C",blight:"#285A40",
+  gold:"#C8956A",glight:"#E8BFA0",gdark:"#906A3A",
+  title:"#C8956A",titleLight:"#E8BFA0",
+  text:"#E8F0EC",muted:"#789080",dim:"#385848",
+  ember:"#A05828",teal:"#1A6A48",purple:"#485890",
+  ic:"#060E0C",wc:"#0A0800",gc:"#061008",pc:"#080C14",
+  marbleClass:"marble-couple",cardClass:"card-couple",
+};
+
+// ═══════════════════════════════════════════════
+// MARBLE CSS
+// ═══════════════════════════════════════════════
+const STYLES = `
+.app-shell{display:flex;height:100%;overflow:hidden}
+.scroll{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.marble-emily{background:radial-gradient(ellipse at 15% 45%,rgba(248,232,232,.05) 0%,transparent 55%),radial-gradient(ellipse at 85% 25%,rgba(255,240,236,.04) 0%,transparent 45%),linear-gradient(140deg,rgba(200,149,106,.07) 0%,transparent 35%),linear-gradient(50deg,rgba(138,20,50,.18) 0%,rgba(26,0,8,1) 55%),#1A0008}
+.marble-greg{background:radial-gradient(ellipse at 25% 55%,rgba(238,234,252,.05) 0%,transparent 55%),radial-gradient(ellipse at 75% 30%,rgba(242,238,255,.04) 0%,transparent 45%),linear-gradient(140deg,rgba(201,150,58,.07) 0%,transparent 35%),linear-gradient(50deg,rgba(55,14,90,.22) 0%,rgba(5,0,8,1) 55%),#050008}
+.marble-couple{background:radial-gradient(ellipse at 35% 50%,rgba(200,149,106,.06) 0%,transparent 55%),linear-gradient(140deg,rgba(26,106,72,.1) 0%,transparent 40%),#03080A}
+.card-emily{background:linear-gradient(122deg,rgba(255,244,244,.06) 0%,transparent 45%),linear-gradient(248deg,rgba(255,234,228,.04) 8%,transparent 50%),linear-gradient(180deg,rgba(200,149,106,.07) 0%,transparent 32%),#2C0016;border:1px solid #580E2C}
+.card-greg{background:linear-gradient(122deg,rgba(244,240,255,.06) 0%,transparent 45%),linear-gradient(248deg,rgba(238,234,252,.04) 8%,transparent 50%),linear-gradient(180deg,rgba(201,150,58,.07) 0%,transparent 32%),#100015;border:1px solid #280E3C}
+.card-couple{background:#0C1C18;border:1px solid #183C2C}
+.sidebar{width:260px;min-width:260px;display:flex;flex-direction:column;overflow:hidden;transition:width .25s ease,min-width .25s ease}
+.sidebar.closed{width:0;min-width:0}
+.toggle-btn{position:fixed;top:14px;z-index:200;width:30px;height:30px;border-radius:50%;font-size:14px;font-weight:bold;display:flex;align-items:center;justify-content:center;transition:left .25s ease;box-shadow:0 2px 8px rgba(0,0,0,.6)}
+`;
+
+// ═══════════════════════════════════════════════
+// SELF-CONTAINED HELPERS
+// ═══════════════════════════════════════════════
+const SelfInput = ({sk, placeholder, P})=>{
+  const ref = useRef(null);
+  useEffect(()=>{ if(ref.current) ref.current.value = localStorage.getItem("si_"+sk)||""; },[sk]);
+  return <input ref={ref} placeholder={placeholder||""} style={{background:P.ic,border:`1px solid ${P.border}`,borderRadius:"6px",padding:"8px 10px",color:P.text,fontSize:"16px",fontFamily:"Arial,sans-serif",width:"100%",WebkitUserSelect:"text",userSelect:"text",touchAction:"manipulation"}} defaultValue={localStorage.getItem("si_"+sk)||""} onInput={e=>{try{localStorage.setItem("si_"+sk,e.target.value)}catch{}}} onFocus={e=>e.target.style.borderColor=P.gold} onBlur={e=>e.target.style.borderColor=P.border}/>;
+};
+
+const TotBtn = ({id,opt,prefix,P})=>{
+  const sk = `tot_${prefix}_${id}`;
+  const [val,setVal] = useState(()=>localStorage.getItem(sk)||null);
+  useEffect(()=>{
+    const h = ()=>setVal(localStorage.getItem(sk)||null);
+    window.addEventListener(sk, h);
+    return ()=>window.removeEventListener(sk, h);
+  },[sk]);
+  const handleClick = ()=>{
+    const v=val===opt?null:opt;
+    setVal(v);
+    try{if(v)localStorage.setItem(sk,v);else localStorage.removeItem(sk);}catch{}
+    window.dispatchEvent(new Event(sk));
+  };
+  return <button onClick={handleClick} style={{padding:"4px 11px",borderRadius:"20px",border:`1px solid ${val===opt?P.gold:P.border}`,background:val===opt?P.gold+"30":"transparent",color:val===opt?P.glight:P.muted,cursor:"pointer",fontSize:"12px",fontFamily:"Arial,sans-serif"}}>{opt}</button>;
+};
+
+const TotLabel = ({id,prefix,P})=>{
+  const sk = `tot_${prefix}_${id}`;
+  const [val,setVal] = useState(()=>localStorage.getItem(sk)||null);
+  useEffect(()=>{
+    const h = ()=>setVal(localStorage.getItem(sk)||null);
+    window.addEventListener(sk, h);
+    return ()=>window.removeEventListener(sk, h);
+  },[sk]);
+  return val ? <span style={{color:P.gold,fontSize:"11px",fontFamily:"Arial,sans-serif",marginLeft:"auto"}}>→ {val}</span> : null;
+};
+
+// ═══════════════════════════════════════════════
+// COMPONENT FACTORY
+
+// ═══════════════════════════════════════════════
+const makeC = (P, inkKey="") => {
+  const sk = (id) => inkKey ? inkKey+"_"+id : id;
+  const JF = ({id,prompt,lines,rows})=>{
+    const key = sk(id);
+    const ref = useRef(null);
+    useEffect(()=>{ if(ref.current) ref.current.value = localStorage.getItem("jf_"+key)||""; },[key]);
+    const numLines = lines||rows||6;
+    return(
+      <div style={{margin:"14px 0"}}>
+        {prompt && <div style={{fontSize:"13px",color:P.gold,fontFamily:"Arial,sans-serif",fontStyle:"italic",marginBottom:"8px",display:"flex",gap:"6px",alignItems:"flex-start"}}><span>✍</span><span>{prompt}</span></div>}
+        <textarea ref={ref} style={{width:"100%",background:P.ic,border:`1px solid ${P.border}`,borderRadius:"6px",padding:"10px 12px",color:P.text,fontSize:"16px",fontFamily:"Arial,sans-serif",lineHeight:1.8,resize:"none",WebkitUserSelect:"text",userSelect:"text",touchAction:"manipulation"}} rows={numLines} defaultValue={localStorage.getItem("jf_"+key)||""} onInput={e=>{try{localStorage.setItem("jf_"+key,e.target.value)}catch{}}} onFocus={e=>e.target.style.borderColor=P.gold} onBlur={e=>e.target.style.borderColor=P.border}/>
+      </div>
+    );
+  };
+  const PH = ({num,title,sub})=>(
+    <div style={{marginBottom:"22px"}}>
+      <div style={{display:"inline-block",background:P.gold,color:"#080808",padding:"3px 10px",fontSize:"9px",fontWeight:"bold",letterSpacing:"2px",fontFamily:"Arial,sans-serif",borderRadius:"2px",marginBottom:"10px"}}>{num}</div>
+      <h1 style={{fontSize:"26px",color:P.text,margin:"0 0 5px",fontWeight:"bold",lineHeight:1.2}}>{title}</h1>
+      <p style={{fontSize:"14px",color:P.muted,fontStyle:"italic",margin:"0 0 18px"}}>{sub}</p>
+      <hr style={{border:"none",borderTop:`1px solid ${P.gold}`,opacity:.35,margin:"0 0 18px"}}/>
+    </div>
+  );
+  const IBox = ({title,items,color})=>{
+    const c=color||P.title;
+    return(<div style={{background:P.ic,border:`1px solid ${c}`,borderLeft:`4px solid ${c}`,borderRadius:"6px",padding:"12px 16px",margin:"12px 0"}}>
+      {title&&<div style={{fontSize:"11px",fontWeight:"bold",color:P.glight,fontFamily:"Arial,sans-serif",marginBottom:"8px",letterSpacing:".5px",textTransform:"uppercase"}}>{title}</div>}
+      {items.map((it,i)=><div key={i} style={{fontSize:"13px",color:P.text+"BB",fontFamily:"Arial,sans-serif",lineHeight:1.7,padding:"1px 0"}}>{it}</div>)}
+    </div>);
+  };
+  const WBox = ({title,items})=>(<div style={{background:P.wc,border:`1px solid ${P.ember}`,borderLeft:`4px solid ${P.ember}`,borderRadius:"6px",padding:"12px 16px",margin:"12px 0"}}>
+    {title&&<div style={{fontSize:"11px",fontWeight:"bold",color:P.ember+"EE",fontFamily:"Arial,sans-serif",marginBottom:"8px",letterSpacing:".5px",textTransform:"uppercase"}}>{title}</div>}
+    {items.map((it,i)=><div key={i} style={{fontSize:"13px",color:P.text+"BB",fontFamily:"Arial,sans-serif",lineHeight:1.7,padding:"1px 0"}}>{it}</div>)}
+  </div>);
+  const GBox = ({title,items})=>(<div style={{background:P.gc,border:`1px solid ${P.teal}`,borderLeft:`4px solid ${P.teal}`,borderRadius:"6px",padding:"12px 16px",margin:"12px 0"}}>
+    {title&&<div style={{fontSize:"11px",fontWeight:"bold",color:P.teal+"EE",fontFamily:"Arial,sans-serif",marginBottom:"8px",letterSpacing:".5px",textTransform:"uppercase"}}>{title}</div>}
+    {items.map((it,i)=><div key={i} style={{fontSize:"13px",color:P.text+"BB",fontFamily:"Arial,sans-serif",lineHeight:1.7,padding:"1px 0"}}>{it}</div>)}
+  </div>);
+  const PBox = ({title,items})=>(<div style={{background:P.pc,border:`1px solid ${P.purple}`,borderLeft:`4px solid ${P.purple}`,borderRadius:"6px",padding:"12px 16px",margin:"12px 0"}}>
+    {title&&<div style={{fontSize:"11px",fontWeight:"bold",color:P.purple+"EE",fontFamily:"Arial,sans-serif",marginBottom:"8px",letterSpacing:".5px",textTransform:"uppercase"}}>{title}</div>}
+    {items.map((it,i)=><div key={i} style={{fontSize:"13px",color:P.text+"BB",fontFamily:"Arial,sans-serif",lineHeight:1.7,padding:"1px 0"}}>{it}</div>)}
+  </div>);
+  const Div = ()=><hr style={{border:"none",borderTop:`1px solid ${P.border}`,margin:"18px 0"}}/>;
+  const H2 = ({children})=><h2 style={{fontSize:"19px",color:P.glight,margin:"22px 0 10px",fontWeight:"bold"}}>{children}</h2>;
+  const H3 = ({children})=><h3 style={{fontSize:"15px",color:P.title,margin:"16px 0 8px",fontWeight:"bold",fontFamily:"Arial,sans-serif"}}>{children}</h3>;
+  const Body = ({children})=><p style={{fontSize:"14px",lineHeight:1.8,color:P.text+"CC",margin:"0 0 12px",fontFamily:"Arial,sans-serif"}}>{children}</p>;
+  const MoodRow = ({id,items,label})=>{
+    const sk = inkKey ? `${inkKey}_${id}` : id;
+    const [val,setVal] = useState(()=>localStorage.getItem("mood_"+sk)||null);
+    const pick = (it)=>{ const v=val===it?null:it; setVal(v); try{if(v!==null)localStorage.setItem("mood_"+sk,v);else localStorage.removeItem("mood_"+sk)}catch{}; };
+    return(
+    <div style={{margin:"12px 0"}}>
+      {label&&<div style={{fontSize:"11px",color:P.muted,fontFamily:"Arial,sans-serif",marginBottom:"6px",fontWeight:"bold",letterSpacing:".5px",textTransform:"uppercase"}}>{label}</div>}
+      <div style={{display:"flex",flexWrap:"wrap",gap:"6px"}}>
+        {items.map(it=><button key={it} onClick={()=>pick(it)} style={{padding:"5px 11px",borderRadius:"20px",border:`1px solid ${val===it?P.gold:P.border}`,background:val===it?P.gold+"30":"transparent",color:val===it?P.glight:P.muted,fontSize:"12px",fontFamily:"Arial,sans-serif",transition:"all .15s",cursor:"pointer"}}>{it}</button>)}
+      </div>
+    </div>
+  );};
+  const MultiSelect = ({id,items,label})=>{
+    const sk = inkKey ? `${inkKey}_${id}` : id;
+    const [sel,setSel] = useState(()=>{ try{return JSON.parse(localStorage.getItem("ms_"+sk)||"[]")}catch{return[]} });
+    const toggle = (it)=>{ const n=sel.includes(it)?sel.filter(x=>x!==it):[...sel,it]; setSel(n); try{localStorage.setItem("ms_"+sk,JSON.stringify(n))}catch{} };
+    return(
+    <div style={{margin:"12px 0"}}>
+      {label&&<div style={{fontSize:"11px",color:P.muted,fontFamily:"Arial,sans-serif",marginBottom:"6px",fontWeight:"bold",letterSpacing:".5px",textTransform:"uppercase"}}>{label}</div>}
+      <div style={{display:"flex",flexWrap:"wrap",gap:"6px"}}>
+        {items.map(it=>{const on=sel.includes(it);return<button key={it} onClick={()=>toggle(it)} style={{padding:"5px 11px",borderRadius:"20px",border:`1px solid ${on?P.gold:P.border}`,background:on?P.gold+"30":"transparent",color:on?P.glight:P.muted,fontSize:"12px",fontFamily:"Arial,sans-serif",transition:"all .15s",cursor:"pointer"}}>{it}</button>;})}
+      </div>
+    </div>
+  );};
+  const NumRow = ({id,min=1,max=10,label})=>{
+    const sk = inkKey ? `${inkKey}_${id}` : id;
+    const [val,setVal] = useState(()=>{ const v=localStorage.getItem("num_"+sk); return v?parseInt(v):null; });
+    const pick = (n)=>{ const v=val===n?null:n; setVal(v); try{if(v!==null)localStorage.setItem("num_"+sk,String(v));else localStorage.removeItem("num_"+sk)}catch{}; };
+    return(
+    <div style={{margin:"10px 0"}}>
+      {label&&<div style={{fontSize:"11px",color:P.muted,fontFamily:"Arial,sans-serif",marginBottom:"5px",fontWeight:"bold",letterSpacing:".5px",textTransform:"uppercase"}}>{label}</div>}
+      <div style={{display:"flex",gap:"5px",flexWrap:"wrap"}}>
+        {Array.from({length:max-min+1},(_,i)=>i+min).map(n=><button key={n} onClick={()=>pick(n)} style={{padding:"4px 9px",borderRadius:"20px",border:`1px solid ${val===n?P.gold:P.border}`,background:val===n?P.gold+"30":"transparent",color:val===n?P.glight:P.muted,fontSize:"12px",fontFamily:"Arial,sans-serif",cursor:"pointer"}}>{n}</button>)}
+      </div>
+    </div>
+  );};
+  const Tag = ({children,color})=><span style={{display:"inline-block",background:(color||P.gold)+"28",border:`1px solid ${color||P.gold}`,borderRadius:"12px",padding:"2px 9px",fontSize:"11px",color:color||P.gold,fontFamily:"Arial,sans-serif",margin:"2px"}}>{children}</span>;
+  const LetterBox = ({children})=><div style={{background:P.ic,border:`1px solid ${P.gold}`,borderRadius:"8px",padding:"22px 24px",margin:"12px 0",lineHeight:1.9}}>{children}</div>;
+  return {JF,PH,IBox,WBox,GBox,PBox,Div,H2,H3,Body,MoodRow,MultiSelect,NumRow,Tag,LetterBox};
+};
+
+// ═══════════════════════════════════════════════
+// WORD SEARCH
+// ═══════════════════════════════════════════════
+const WSGRID=[["S","O","B","R","I","E","T","Y","W","X","C","O","U","R","A","G","E","P","Q","Z"],["K","H","O","N","E","S","T","V","Z","S","E","R","E","N","I","T","Y","J","A","X"],["S","U","R","R","E","N","D","E","R","P","B","O","U","N","D","A","R","I","E","S"],["T","M","G","R","A","T","I","T","U","D","E","H","E","A","L","I","N","G","W","L"],["P","A","T","I","E","N","C","E","Z","S","T","R","E","N","G","T","H","X","V","B"],["T","R","U","S","T","S","F","R","E","E","D","O","M","G","R","O","W","T","H","Y"],["R","B","R","E","A","T","H","P","R","E","S","E","N","T","W","Q","M","Z","C","K"],["F","O","R","G","I","V","E","R","E","S","T","O","R","E","C","L","A","R","I","T"],["Y","M","I","N","D","F","U","L","P","H","O","E","N","I","X","S","O","B","E","R"],["W","Q","Z","X","C","V","B","N","M","A","S","D","F","G","H","J","K","L","P","O"],["C","O","U","R","A","G","E","Q","W","E","R","T","Y","H","O","N","E","S","T","Z"],["S","E","R","E","N","I","T","Y","Z","X","C","V","B","N","M","Q","W","E","R","T"],["B","O","U","N","D","A","R","I","E","S","A","S","D","F","G","H","J","K","L","M"],["G","R","A","T","I","T","U","D","E","Q","W","E","R","T","Y","U","I","O","P","Z"],["H","E","A","L","I","N","G","A","S","D","F","G","H","J","K","L","M","N","B","V"],["P","A","T","I","E","N","C","E","X","C","V","B","N","M","Q","W","E","R","T","Y"],["S","T","R","E","N","G","T","H","U","I","O","P","A","S","D","F","G","H","J","K"],["F","R","E","E","D","O","M","Z","X","C","V","B","N","M","Q","W","E","R","T","Y"],["G","R","O","W","T","H","A","S","D","F","G","H","J","K","L","M","N","O","P","Q"],["B","R","E","A","T","H","P","R","E","S","E","N","T","F","O","R","G","I","V","E"]];
+const WSWORDS=["SOBRIETY","COURAGE","HONEST","SERENITY","SURRENDER","BOUNDARIES","GRATITUDE","HEALING","PATIENCE","STRENGTH","TRUST","FREEDOM","GROWTH","BREATH","PRESENT","FORGIVE","MINDFUL","PHOENIX"];
+const WordSearch=({P})=>{
+  const[found,setFound]=useState([]);
+  const toggle=w=>setFound(f=>f.includes(w)?f.filter(x=>x!==w):[...f,w]);
+  const fc=new Set();
+  found.forEach(w=>{for(let r=0;r<WSGRID.length;r++)for(let c=0;c<20;c++)for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){if(!dr&&!dc)continue;let ok=true;for(let i=0;i<w.length;i++){const nr=r+dr*i,nc=c+dc*i;if(nr<0||nr>=20||nc<0||nc>=20||WSGRID[nr][nc]!==w[i]){ok=false;break;}}if(ok)for(let i=0;i<w.length;i++)fc.add(`${r+dr*i},${c+dc*i}`);}});
+  return(<div>
+    <div style={{overflowX:"auto",paddingBottom:"8px"}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(20,28px)",gap:"2px",width:"fit-content",margin:"0 auto"}}>
+        {WSGRID.map((row,r)=>row.map((cell,c)=><div key={`${r},${c}`} style={{width:"28px",height:"28px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"11px",fontWeight:"bold",fontFamily:"Courier New,monospace",color:fc.has(`${r},${c}`)?P.gold:P.muted,background:fc.has(`${r},${c}`)?P.ic:"transparent",border:`1px solid ${P.border}22`,borderRadius:"2px"}}>{cell}</div>))}
+      </div>
+    </div>
+    <div style={{marginTop:"12px",display:"flex",flexWrap:"wrap",gap:"5px"}}>
+      {WSWORDS.map(w=><button key={w} onClick={()=>toggle(w)} style={{padding:"3px 9px",borderRadius:"20px",border:`1px solid ${found.includes(w)?P.teal:P.border}`,background:found.includes(w)?P.teal+"22":"transparent",color:found.includes(w)?P.glight:P.muted,cursor:"pointer",fontSize:"11px",fontFamily:"monospace",textDecoration:found.includes(w)?"line-through":"none"}}>{w}</button>)}
+    </div>
+    <div style={{marginTop:"8px",fontSize:"12px",color:P.gold,fontFamily:"Arial,sans-serif"}}>{found.length}/{WSWORDS.length} found {found.length===WSWORDS.length?"🏆":""}</div>
+  </div>);
+};
+
+// ═══════════════════════════════════════════════
+// ██████████  GREG'S WORKBOOKS  ██████████
+// ═══════════════════════════════════════════════
+
+// ── GREG: FORGED IN THE FIRE ──
+const GregRehab = ()=>{
+  const P=GP;const{JF,PH,IBox,WBox,GBox,PBox,Div,H2,H3,Body,MoodRow,MultiSelect,NumRow,Tag,LetterBox}=makeC(P,"greg_rehab");
+  const[page,setPage]=useState("letter");
+  const pages=[["letter","Emily's Letter"],["p1","Where You Are"],["p2","Addiction"],["p3","Mental Health"],["p4","Inner Work"],["p5","Relationships"],["p6","Triggers & Crisis"],["p7","New Life"],["p8","Daily Pages"],["p9","Mind Occupiers"],["p10","Resources"]];
+  return(<WorkbookShell P={P} title="Forged in the Fire" subtitle="Greg's Residential Recovery Workbook" pages={pages} page={page} setPage={setPage}>
+    {page==="letter"&&<div>
+      <PH num="FROM EMILY" title="A Letter From Emily" sub="written with love, for the moment you open this"/>
+      <LetterBox>
+        <p style={{fontSize:"15px",color:P.glight,fontStyle:"italic",lineHeight:1.9,marginBottom:"16px",fontWeight:"600"}}>Baby,</p>
+        <p style={{fontSize:"14px",color:P.text+"CC",lineHeight:1.9,marginBottom:"12px",fontFamily:"Arial,sans-serif"}}>I need you to know that before anything else in this book — I see you. Not the version you put out there. Not the anger, not the sarcasm, not the things you don't mean to say. I see what's underneath all of that. I always have.</p>
+        <p style={{fontSize:"14px",color:P.text+"CC",lineHeight:1.9,marginBottom:"12px",fontFamily:"Arial,sans-serif"}}>I see the person behind the outbursts. The intention behind the actions that somehow always turn into the routine you're so desperately trying to get out of. I know that what comes out of you is almost never what you actually mean — and I know that feeling. God, I know that feeling. Almost everything I want to say to you comes out wrong too. My true feelings, my real intentions — they get lost in translation more often than I can count. So does yours. We've been two people standing in the same room, speaking different languages, and somehow still choosing each other anyway.</p>
+        <p style={{fontSize:"14px",color:P.text+"CC",lineHeight:1.9,marginBottom:"12px",fontFamily:"Arial,sans-serif"}}>I understand the feeling of being at war with yourself. Of having something real and true inside you that never quite makes it out the way it was supposed to. I know there's always something that gets lost between what you feel and what actually happens — between what you mean and what I receive. I've lived that from my side of us for a long time. I think you've lived it longer.</p>
+        <p style={{fontSize:"14px",color:P.text+"CC",lineHeight:1.9,marginBottom:"12px",fontFamily:"Arial,sans-serif"}}>I want you to know that I don't mean to make you feel bad. I don't mean to make you feel unwanted. I want you — I want you so passionately it scares me sometimes. That has never changed. Not through any of it.</p>
+        <p style={{fontSize:"14px",color:P.text+"CC",lineHeight:1.9,marginBottom:"12px",fontFamily:"Arial,sans-serif"}}>I made this for you because I know how your mind works. I know it needs somewhere to go or it will turn on itself. I know the long days in there will feel endless and I didn't want you to have nothing. So I made you something — something that knows who you actually are, not who anyone else sees.</p>
+        <p style={{fontSize:"14px",color:P.text+"CC",lineHeight:1.9,marginBottom:"12px",fontFamily:"Arial,sans-serif"}}>Use it however you need to. Skip what's too much today. Come back to it. Write the things you've never been able to say out loud. That's what it's here for.</p>
+        <p style={{fontSize:"14px",color:P.text+"CC",lineHeight:1.9,marginBottom:"16px",fontFamily:"Arial,sans-serif"}}>I'm doing my own work while you do yours. We're in this separately, and we're in this together. Come back honest. That's all I need. Come back willing to let me see you — really see you — the way I already do.</p>
+        <p style={{fontSize:"15px",color:P.glight,fontStyle:"italic",lineHeight:1.9,marginBottom:"8px",fontWeight:"600"}}>Come home.</p>
+        <p style={{fontSize:"14px",color:P.muted,fontStyle:"italic",lineHeight:1.9,marginBottom:"4px"}}>With everything I have and everything I am,</p>
+        <p style={{fontSize:"17px",color:P.gold,fontStyle:"italic"}}>Emily ♥</p>
+      </LetterBox>
+    </div>}
+    {page==="p1"&&<div>
+      <PH num="PART ONE" title="Where You Are" sub="Landing, orienting, telling the truth about right now"/>
+      <H2>Day One Check-In</H2>
+      <Body>You made it here. That took more than people will ever understand.</Body>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",margin:"12px 0"}}>
+        <div><div style={{fontSize:"11px",color:P.muted,fontFamily:"Arial,sans-serif",marginBottom:"5px",fontWeight:"bold",textTransform:"uppercase",letterSpacing:".5px"}}>Date</div><SelfInput sk="greg_rehab_g1_date" P={P}/></div>
+        <div><div style={{fontSize:"11px",color:P.muted,fontFamily:"Arial,sans-serif",marginBottom:"5px",fontWeight:"bold",textTransform:"uppercase",letterSpacing:".5px"}}>Day # in treatment</div><SelfInput sk="greg_rehab_g1_daynum" P={P}/></div>
+      </div>
+      <NumRow id="g1_ready" min={1} max={10} label="Readiness (1=dragged here, 10=desperate for it)"/>
+      <JF id="g1_how" prompt="How I got here (brief):" lines={3}/>
+      <JF id="g1_scared" prompt="The thing I am most scared of about being here:" lines={3}/>
+      <JF id="g1_relieved" prompt="The thing I am most relieved about:" lines={3}/>
+      <Div/>
+      <H2>Feelings Inventory</H2>
+      <MultiSelect id="g1_feelings" label="Everything true right now — tap all that apply" items={["Scared","Relieved","Ashamed","Angry","Numb","Hopeful","Exhausted","Resistant","Grateful","Lost","Lonely","Ready","Detached","Fragile","Determined","Grieving","Empty","Cautious","Resentful","Sad","Curious","Overwhelmed","Uncertain","Open","Broken","Brave"]}/>
+      <JF id="g1_unwilling" prompt="The emotion I am least willing to admit right now:" lines={2}/>
+      <JF id="g1_want" prompt="What I most want from this time in treatment:" lines={4}/>
+      <JF id="g1_afraid_of" prompt="What I am most afraid this treatment will ask of me:" lines={4}/>
+      <Div/>
+      <H2>Who You Are Coming In</H2>
+      <JF id="g1_strengths" prompt="Name 5 things you are actually good at — what you actually are, not what you wish you were:" lines={6}/>
+      <JF id="g1_cares" prompt="What do you care about most in the world? Strip away the chaos — what's left?" lines={5}/>
+      <JF id="g1_become" prompt="Describe the man you most want to become — not who you think you should be, who you actually want to be:" lines={5}/>
+      <JF id="g1_why_recover" prompt="My real reasons for recovery — not the ones that sound good:" lines={6}/>
+    </div>}
+    {page==="p2"&&<div>
+      <PH num="PART TWO" title="Understanding Addiction" sub="What happened in your brain — and why it's not a moral failure"/>
+      <Body>Addiction is not weakness. It is not a character flaw. It is a neurological condition — a fundamental alteration of your brain's reward, motivation, and survival systems.</Body>
+      <H2>Your Brain's Reward System</H2>
+      <Body>Drugs hijack your dopamine system violently. Here's what that looks like in numbers:</Body>
+      <table style={{width:"100%",borderCollapse:"collapse",margin:"12px 0"}}>
+        <thead><tr><th style={{background:P.card,padding:"8px 10px",textAlign:"left",fontSize:"11px",color:P.gold,fontFamily:"Arial,sans-serif",fontWeight:"bold",borderBottom:`1px solid ${P.border}`}}>Experience</th><th style={{background:P.card,padding:"8px 10px",textAlign:"left",fontSize:"11px",color:P.gold,fontFamily:"Arial,sans-serif",fontWeight:"bold",borderBottom:`1px solid ${P.border}`}}>Dopamine Release</th></tr></thead>
+        <tbody>{[["Eating food you love","+ 50%"],["Sex","+ 100%"],["Exercise","+ 100–200%"],["Cocaine","+ 350%"],["Heroin","+ 500–600%"],["Methamphetamine","+ 1,200% ⚠"]].map(([e,v],i)=><tr key={e}><td style={{padding:"8px 10px",fontSize:"12px",color:P.text+"BB",fontFamily:"Arial,sans-serif",borderBottom:`1px solid ${P.border}`,background:i%2?P.ic:"transparent"}}>{e}</td><td style={{padding:"8px 10px",fontSize:"12px",fontFamily:"Arial,sans-serif",borderBottom:`1px solid ${P.border}`,background:i%2?P.ic:"transparent",color:e==="Methamphetamine"?P.ember:P.teal+"EE",fontWeight:e==="Methamphetamine"?"bold":"normal"}}>{v}</td></tr>)}</tbody>
+      </table>
+      <Body>After a 1,200% dopamine surge repeatedly, your brain recalibrates — down-regulates dopamine receptors. Normal pleasures stop working. Motivation collapses. Depression floods in. This is brain chemistry, not weakness of character.</Body>
+      <H2>Heroin, Opioids & the Suboxone Bridge</H2>
+      <Body>Heroin hijacks your opioid system — responsible for pain relief, emotional bonding, and the deep sense of being okay. Suboxone is medication-assisted treatment that keeps your brain stable while you do the real work of recovery.</Body>
+      <GBox title="What Suboxone Is — and Is Not" items={["✓ Legitimate, evidence-based medical treatment. Not 'trading one addiction for another.'","✓ A bridge that keeps your brain stable while you do the real work.","✓ Something that takes strength to commit to and consistency to maintain.","✗ Not a shortcut or sign you aren't doing 'real' recovery.","✗ Not something to be ashamed of. Many long-term recovery stories include MAT."]}/>
+      <JF id="g2_meth_why" prompt="What problem was meth solving for you? What was it giving you that you desperately needed?" lines={5}/>
+      <JF id="g2_heroin_why" prompt="What problem was heroin solving? What did it take away that you couldn't carry anymore?" lines={5}/>
+      <JF id="g2_together" prompt="What did using together with Emily mean — what did it provide that sober connection didn't?" lines={5}/>
+      <JF id="g2_taken" prompt="What has addiction taken from me — be honest, be specific:" lines={8}/>
+      <Div/>
+      <IBox title="Brain Recovery Timeline — What to Expect" items={["Days 1–14:    Acute withdrawal. Worst physical symptoms. Brain chemistry in chaos.","Weeks 2–8:   PAWS — mood swings, sleep problems, anhedonia. Very common. Very temporary.","Months 2–6:  Dopamine receptors begin recovering. Small pleasures start returning.","Months 6–12: Significant neurological repair. Sleep improves. Motivation rebuilds.","Year 1–2:    Continued healing. The recovery brain is often stronger than before."]}/>
+      <JF id="g2_recovery_means" prompt="What does 'recovery' mean to you beyond just not using? What does the life look like on the other side?" lines={5}/>
+      <JF id="g2_miss" prompt="What small pleasure or experience do you most want to feel genuinely again?" lines={4}/>
+    </div>}
+    {page==="p3"&&<div>
+      <PH num="PART THREE" title="Your Mental Health Landscape" sub="Understanding the full terrain you're working with"/>
+      <Body>Mental health struggles are often the soil that addiction grows in — the pain that substances were recruited to manage. Treatment that only addresses the substances without addressing the underlying mental health is like mopping up a flood without fixing the leak.</Body>
+      <H2>PTSD — The Nervous System Stuck in Survival Mode</H2>
+      <IBox title="PTSD Shows Up As:" items={["→ Hypervigilance — constantly scanning for danger even in safe environments","→ Emotional reactivity — 0 to 100 faster than the situation warrants","→ Avoidance — staying away from people, places, feelings that remind you of trauma","→ Numbing — emotional flatness as a survival mechanism","→ Intrusive memories or flashbacks — the past arriving uninvited in the present","→ Difficulty trusting — because trust was previously used against you"]} color={P.purple}/>
+      <WBox title="PTSD & Addiction — The Connection" items={["For many people, substances were the most effective PTSD treatment they had access to.","Meth quieted the hypervigilance. Heroin numbed the intrusive pain. Both worked — at first.","This is why treating PTSD is not optional in addiction recovery. It is the foundation.","Without addressing the trauma, the cravings will always have somewhere to run back to."]}/>
+      <JF id="g3_ptsd" prompt="What are your primary PTSD triggers — the people, places, feelings, or situations that send your nervous system into threat mode?" lines={5}/>
+      <JF id="g3_ptsd_emily" prompt="How has PTSD shown up in your relationship with Emily? What does she experience vs. what's actually happening inside you?" lines={5}/>
+      <JF id="g3_survival_skills" prompt="The survival skills that kept you alive during hard times — which ones are you still running in environments that no longer require them?" lines={5}/>
+      <Div/>
+      <H2>Bipolar Disorder — The Rollercoaster Brain</H2>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",margin:"12px 0"}}>
+        <WBox title="Depression Phase" items={["No energy or motivation","Hopelessness, worthlessness","Cognitive fog","Oversleeping or insomnia","Isolation, withdrawal","Increased craving risk"]}/>
+        <IBox title="Mania/Hypomania Phase" items={["Racing thoughts, high energy","Decreased need for sleep","Impulsivity, risk-taking","Feeling invincible or irritable","Can FEEL like wellness — it isn't"]} color={P.gold}/>
+      </div>
+      <JF id="g3_depression" prompt="Describe your depression when it hits — what does it look like from inside? What does it make you believe about yourself?" lines={5}/>
+      <JF id="g3_mania" prompt="Describe your manic or hypomanic episodes — what are the first signs? What decisions have you made in that state?" lines={4}/>
+      <Div/>
+      <H2>ADHD — The Fast-Forward Brain</H2>
+      <GBox title="ADHD in Recovery — What to Know" items={["Meth provided the dopamine hit that ADHD brains are chronically short on. This makes meth use in ADHD extremely seductive — it worked, neurologically, for focus.","Recovery with untreated ADHD is harder than it needs to be. Structure, routine, body-based movement, and (when appropriate) medication can provide what meth was providing through a pathway that doesn't destroy everything else."]}/>
+      <JF id="g3_adhd" prompt="How does ADHD show up in your daily life? What tasks, situations, or environments are hardest?" lines={5}/>
+      <Div/>
+      <H2>Depression & Anxiety</H2>
+      <WBox title="What Depression Lies About" items={['"Nothing will ever get better." — It can. The brain heals.','"You are worthless." — You are not. This is a symptom, not a verdict.','"There is no point in trying." — There is. The evidence is this page.','"You will always feel this way." — You will not. This is chemistry, not fate.','When your depression speaks in your voice: it is not your voice.']}/>
+      <JF id="g3_dep_lies" prompt="What does your depression tell you when it's loudest? Write the phrases — then write the counter-truth next to each one." lines={8}/>
+      <JF id="g3_anxiety" prompt="What does your anxiety fixate on most? What scenarios does it run on loop?" lines={5}/>
+    </div>}
+    {page==="p4"&&<div>
+      <PH num="PART FOUR" title="The Inner Work" sub="Trauma, shame, the inner child, and the parts that need meeting"/>
+      <Body>You can stop using without doing inner work. But you will be white-knuckling it. Cravings will always have an address — the exact wound the substance was managing. Until that wound is understood and tended, it will keep sending the same invoice.</Body>
+      <H2>The Three Versions of You</H2>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",margin:"12px 0"}}>
+        <WBox title="The Survival Self" items={["Shuts down, controls, stings first","Disappears or explodes","Equates vulnerability with death","Was brilliant. Kept you alive.","Is running in the wrong context now."]}/>
+        <GBox title="The True Self" items={["Feels deeply, loves fiercely","Craves genuine connection","Wisdom earned hard","Still there. Still intact. Still waiting."]}/>
+      </div>
+      <JF id="g4_survival" prompt="Describe your Survival Self — when did he first appear? What was he responding to?" lines={6}/>
+      <JF id="g4_true" prompt="Describe your True Self — what does he feel? What does he want? What has he been protecting?" lines={6}/>
+      <Div/>
+      <H2>Shame — The Engine Under the Hood</H2>
+      <WBox title="The Shame-Addiction Cycle" items={["1. Shame activates → feeling fundamentally broken or unlovable","2. Substances offer temporary relief ('I don't feel it when I'm high')","3. Using creates more things to be ashamed of","4. Shame deepens → 'now I'm REALLY broken'","5. Return to step 1 with heavier armor","","Breaking this cycle: naming the shame, having it witnessed without judgment."]}/>
+      <JF id="g4_shame" prompt="What are you most ashamed of? Name it here. Shame loses power the moment it is spoken." lines={6}/>
+      <JF id="g4_shame_rec" prompt="Where does shame show up in your recovery? Where does it make you want to give up or hide?" lines={5}/>
+      <Div/>
+      <H2>Little Greg — The Inner Child</H2>
+      <JF id="g4_little_need" prompt="What did little Greg need that he didn't get? Specifically — what was missing in the particular rooms of his particular childhood?" lines={6}/>
+      <JF id="g4_little_now" prompt="Where does little Greg show up in your life now — with Emily, in treatment, in moments of conflict or fear?" lines={5}/>
+      <JF id="g4_letter_little" prompt="Write a letter to little Greg — tell him what you wish someone had told him then:" lines={10}/>
+      <Div/>
+      <H2>The Scorpio Shadow</H2>
+      <PBox title="Scorpio Shadow Patterns — Honest Inventory" items={["→ Using silence and withdrawal as punishment when you feel cornered","→ Testing Emily's loyalty rather than building trust through vulnerability","→ All-or-nothing: fully in or fully gone, no middle ground","→ Mistaking stoicism and control for strength","→ Pisces Moon martyrdom: suffering silently then feeling unseen for it","→ Capricorn Rising armor: appearing fine when you are not remotely fine"]}/>
+      <JF id="g4_scorpio" prompt="Which of these patterns do you recognize most clearly? Where has it cost you the most?" lines={5}/>
+      <JF id="g4_armor" prompt="What would it mean to let the armor come off — even partially — and be fully honest about what's underneath?" lines={5}/>
+    </div>}
+    {page==="p5"&&<div>
+      <PH num="PART FIVE" title="Relationships & Communication" sub="Emily, trust, conflict, and how connection gets rebuilt"/>
+      <IBox title="Emily — Leo Sun, Virgo Moon, Sagittarius Rising, Life Path 1" items={["Her Leo Sun's deepest need: to be genuinely seen and valued. When you withdraw, her Leo sun goes out. She interprets absence as rejection. This is her actual wiring.","Her Virgo Moon: feels safest when things are reliable. Broken promises land in her nervous system as danger. Consistency and honesty repair what was broken.","What she most needs from you: honesty, consistency, showing up, and genuine unprompted acknowledgment that she matters to you."]} color={P.gold}/>
+      <JF id="g5_emily_need" prompt="What does Emily need from you that you have been unable or unwilling to give?" lines={5}/>
+      <JF id="g5_greg_need" prompt="What do YOU need from Emily that you have never clearly asked for?" lines={5}/>
+      <Div/>
+      <H2>How You Fight — And How to Fight Better</H2>
+      <JF id="g5_fight_do" prompt="What do I do when we fight (be honest — this is the work):" lines={4}/>
+      <JF id="g5_fight_feel" prompt="What am I actually feeling underneath when I fight:" lines={4}/>
+      <IBox title="The 'I Feel' Formula" items={['Instead of: "You never trust me. Nothing I do is ever good enough."','Try: "I feel like I\'m failing when I can\'t rebuild trust. I need to know what \'good enough\' looks like."',"Format: I feel [emotion] when [specific behavior]. I need [specific request]."]}/>
+      <JF id="g5_i_feel" prompt="Practice: Rewrite your 3 most common complaint patterns using 'I feel...':" lines={8}/>
+      <JF id="g5_letter" prompt="A letter to Emily from your most honest self — say what you need her to know:" lines={14}/>
+    </div>}
+    {page==="p6"&&<div>
+      <PH num="PART SIX" title="Triggers, Cravings & Crisis Tools" sub="The practical tools that keep you in the game"/>
+      <IBox title="The 4 Categories of Triggers" items={["EMOTIONAL:    Shame, loneliness, rage, boredom, anxiety, feeling disrespected","SITUATIONAL:  People, places, things associated with past use","PHYSICAL:     Pain, exhaustion, hunger — HALT: Hungry, Angry, Lonely, Tired","RELATIONAL:   Conflict with Emily, feeling controlled, feeling abandoned"]}/>
+      <JF id="g6_trig_emo" prompt="MY TOP TRIGGERS — Emotional:" lines={5}/>
+      <JF id="g6_trig_sit" prompt="MY TOP TRIGGERS — Situational:" lines={5}/>
+      <JF id="g6_trig_rel" prompt="MY TOP TRIGGERS — Relational (with Emily):" lines={4}/>
+      <Div/>
+      <GBox title="The HALT + STOP Method" items={["Before acting on any craving, check HALT:","  H — Hungry?   A — Angry?   L — Lonely?   T — Tired?","Then STOP:","  S — Stop. Don't move toward the craving. Freeze.","  T — Take a breath. Deep, slow, through the nose.","  O — Observe. What am I feeling? What is this craving actually asking for?","  P — Proceed mindfully. What is the wise choice right now?"]}/>
+      <Div/>
+      <H2>Your Personal Crisis Plan</H2>
+      <Body>Write this now, while you are in treatment and thinking clearly. You will need it when you are not.</Body>
+      <JF id="g6_crisis_3" prompt="The 3 things I will do the moment I feel a craving peak:" lines={4}/>
+      <JF id="g6_safe_people" prompt="My safe people — who I can call, why each is safe:" lines={4}/>
+      <JF id="g6_warnings" prompt="Early warning signs that I am heading toward relapse — in my thinking, behavior, mood:" lines={5}/>
+      <JF id="g6_if_relapse" prompt="If I relapse — what I will do immediately, who I will call, how I will get back:" lines={4}/>
+      <IBox title="Emergency Grounding Tools" items={["Physical reset: Run, push-ups, cold water on face — move the body","5-4-3-2-1: Name 5 you see, 4 touch, 3 hear, 2 smell, 1 taste","Call first: Pick up the phone before you pick up. One call. That's all.","Delay: 'I will wait 30 minutes.' Most cravings pass in 20–30 min."]}/>
+    </div>}
+    {page==="p7"&&<div>
+      <PH num="PART SEVEN" title="Building a New Life" sub="Identity, values, dreams, and the world you're building toward"/>
+      <Body>Recovery is not just the absence of substances. It is the construction of a new identity — a self that is full enough, honest enough, and grounded enough that substances lose their appeal.</Body>
+      <JF id="g7_5years" prompt="Describe the man you want to be in 5 years. Not what you want to have — who you want to BE." lines={7}/>
+      <JF id="g7_values" prompt="What values matter most to you — the ones you want to actually live by, not just claim?" lines={6}/>
+      <JF id="g7_bucket" prompt="Full bucket list — no limits, no editing:" lines={10}/>
+      <Div/>
+      <H2>The Phoenix — Your Scorpio Mythology</H2>
+      <PBox title="The Three Symbols of Scorpio" items={["The Scorpion — reactive, self-protective, survival mode. The beginning, not the destination.","The Eagle — elevated perspective, sees the full terrain, wisdom from the height.","The Phoenix — transformation through fire. Death into rebirth. Not once. A thousand times.","","You did not go through what you went through to stay a Scorpion. The fire was the point."]}/>
+      <JF id="g7_transform" prompt="What has this season of your life already transformed in you, even if incomplete?" lines={5}/>
+      <JF id="g7_build" prompt="What do you want to build when you leave treatment? Not just sobriety — a life. What does it contain?" lines={5}/>
+      <JF id="g7_emily_vision" prompt="My vision for my relationship with Emily in recovery — specific, honest, real:" lines={6}/>
+    </div>}
+    {page==="p8"&&<DailyPages P={P} prefix="g_daily" color="greg"/>}
+    {page==="p9"&&<MindOccupiers P={P} prefix="g_mo"/>}
+    {page==="p10"&&<div>
+      <PH num="PART TEN" title="Resources & A Final Word" sub=""/>
+      <GBox title="Addiction & Recovery" items={["SAMHSA Helpline: 1-800-662-4357 (free, 24/7)","Narcotics Anonymous: www.na.org","SMART Recovery: www.smartrecovery.org","Crystal Meth Anonymous: www.crystalmeth.org","Suboxone/MAT: www.samhsa.gov/medication-assisted-treatment"]}/>
+      <IBox title="Mental Health" items={["988 Suicide & Crisis Lifeline: Call or text 988","Crisis Text Line: Text HOME to 741741","PTSD Resources: www.ptsd.va.gov","Find a Therapist: www.psychologytoday.com"]}/>
+      <Div/>
+      <H2>A Final Word, Greg</H2>
+      <LetterBox>
+        <p style={{fontSize:"14px",color:P.text+"CC",lineHeight:1.9,marginBottom:"12px",fontFamily:"Arial,sans-serif"}}>You were born a Scorpio for a reason. The sign of transformation. The Phoenix. The alchemist who takes dark materials and makes something new. You did not walk the road you walked because you were broken. You walked it because that road had things in it — lessons, depths, a kind of suffering-forged wisdom — that cannot be acquired any other way.</p>
+        <p style={{fontSize:"14px",color:P.text+"CC",lineHeight:1.9,marginBottom:"12px",fontFamily:"Arial,sans-serif"}}>Recovery is not a single decision. It is a thousand small ones, made daily, made again after each stumble. The willingness to keep making it — that is the whole thing.</p>
+        <p style={{fontSize:"14px",color:P.text+"CC",lineHeight:1.9,marginBottom:"12px",fontFamily:"Arial,sans-serif"}}>You have a woman who made you a book. Who is doing her own shadow work while you do yours, so that when you both come back to each other you bring something real.</p>
+        <p style={{fontSize:"16px",fontWeight:"bold",color:P.gold,textAlign:"center",margin:"20px 0 8px",fontFamily:"Georgia,serif"}}>Come home changed. Come home whole.</p>
+        <p style={{textAlign:"center",color:P.glight,fontStyle:"italic",fontFamily:"Georgia,serif"}}>✦  Descend. Transform. Rise.  ✦</p>
+      </LetterBox>
+    </div>}
+  </WorkbookShell>);
+};
+
+// ── GREG: SHADOW WORK ──
+const GregShadow = ()=>{
+  const P=GP;const{JF,PH,IBox,WBox,GBox,PBox,Div,H2,H3,Body,MoodRow,MultiSelect,NumRow,Tag,LetterBox}=makeC(P,"greg_shadow");
+  const[page,setPage]=useState("cover");
+  const pages=[["cover","Cover"],["blueprint","Cosmic Blueprint"],["p1","Ego vs True Self"],["p2","Core Wounds & Shame"],["p3","Inner Child"],["p4","Projection & Mirror"],["p5","Wounded Masculine"],["p6","Fear & Surrender"],["p7","The Sacred Mirror"],["p8","Integration"]];
+  return(<WorkbookShell P={P} title="Descend to Rise" subtitle="Greg's Shadow Work Journal" pages={pages} page={page} setPage={setPage}>
+    {page==="cover"&&<div style={{textAlign:"center",padding:"20px 0"}}>
+      <div style={{fontSize:"44px",color:P.gold,marginBottom:"8px"}}>✦</div>
+      <div style={{fontSize:"11px",letterSpacing:"4px",color:P.muted,fontFamily:"Arial,sans-serif",marginBottom:"8px"}}>DESCEND TO RISE</div>
+      <h1 style={{fontSize:"38px",color:P.text,margin:"0 0 6px"}}>Greg's</h1>
+      <h2 style={{fontSize:"24px",color:P.glight,margin:"0 0 18px",fontStyle:"italic",fontWeight:"normal"}}>Shadow Work Journal</h2>
+      <hr style={{border:"none",borderTop:`1px solid ${P.gold}`,opacity:.35,margin:"0 auto 18px",maxWidth:"200px"}}/>
+      <div style={{margin:"16px 0"}}>{["☀ Scorpio Sun","☽ Pisces Moon","↑ Capricorn Rising"].map(t=><Tag key={t} color={P.gold}>{t}</Tag>)}</div>
+      <div style={{margin:"0 0 14px"}}>{["Life Path 8","Day 7 · The Seeker","Master Month 11"].map(t=><Tag key={t} color={P.purple}>{t}</Tag>)}</div>
+      <div style={{margin:"20px auto",maxWidth:"340px",background:P.ic,border:`1px solid ${P.gold}`,borderRadius:"8px",padding:"20px 22px"}}>
+        <p style={{fontSize:"15px",color:P.muted,fontStyle:"italic",lineHeight:1.9}}>"The only way out is through."</p>
+        <p style={{fontSize:"12px",color:P.dim,fontFamily:"Arial,sans-serif",marginTop:"6px"}}>— Robert Frost</p>
+      </div>
+    </div>}
+    {page==="blueprint"&&<div>
+      <PH num="YOUR COSMIC BLUEPRINT" title="The Astrology & Numerology of Your Soul" sub="Understanding the design you were born with"/>
+      <H2>☀ Scorpio Sun — The Alchemist</H2>
+      <Body>Scorpio is the sign of death, rebirth, transformation, and the unseen. You were born under Fixed Water — deep, still, and powerful. Your core identity runs through the 8th house: trauma, shared power, secrets, and alchemy.</Body>
+      <WBox title="Scorpio Sun — Light & Shadow" items={["LIGHT: You love with absolute totality. You see through pretense instantly. When Scorpio commits, it commits with every cell.","SHADOW: Scorpio's wound is betrayal — real or anticipated. 'If I show you who I truly am, you will use it against me.'","So the sting is always loaded. The walls are always up. The control never sleeps.",'"The scorpion stings before it can be stung. It has been practicing this since childhood."']}/>
+      <JF id="gs_scorpio_wound" prompt="When did you first learn that showing vulnerability was dangerous? What happened that taught you to keep yourself hidden?" lines={6}/>
+      <Div/>
+      <H2>☽ Pisces Moon — The Ocean Within</H2>
+      <Body>Your Moon is in Pisces — the most emotionally expansive, boundary-dissolving moon placement in the zodiac. You feel everything. Other people's pain, the energy in a room, the weight of unspoken things. You were not built for a shallow life.</Body>
+      <IBox title="Pisces Moon — Light & Shadow" items={["LIGHT: Extraordinary empathy. You feel what words cannot say. Spiritually gifted, creatively deep.","SHADOW: Pisces Moon is the most addiction-prone moon placement. Not because of weakness — because you feel so deeply that the overwhelm becomes unbearable.","Your Scorpio Sun controls. Your Pisces Moon dissolves. Together: a man who grips everything and simultaneously wants to let it all go."]}/>
+      <JF id="gs_pisces_feeling" prompt="What does it feel like inside when you are emotionally overwhelmed? Where does the feeling go — into anger, numbness, substances, sleep?" lines={5}/>
+      <Div/>
+      <H2>↑ Capricorn Rising — The Mountain's Face</H2>
+      <Body>Your Rising sign is Capricorn — the Mountain Goat, the Elder, the Builder. You present as serious, controlled, capable, emotionally restrained. People experience you as steady and formidable. They may not realize how much is moving beneath the surface.</Body>
+      <JF id="gs_cap_armor" prompt="In what situations does your Capricorn rising prevent you from showing Emily what you're actually feeling? What do you protect vs. what do you allow her to see?" lines={5}/>
+      <Div/>
+      <H2>✦ Your Numerological Soul Code</H2>
+      <IBox title="Greg's Numbers — November 16, 1988" items={["Life Path 8  —  The Powerhouse · The Karmic Force · The Authority","  November (Master 11) + 16→7 + 1988→8 = 26 → 8","","Master Month 11:  Born in a Master Number month — spiritual illumination, heightened sensitivity.","Day Number 7:  The Seeker · The Mystic · The Solitary Truth-Finder","","Life Path 8: The number of karma — power, authority, and the soul's reckoning with how it uses both."]}/>
+      <WBox title="The LP8 Core Wound" items={['"To need anything from anyone is to give them power over me."',"","Your soul came here to master power — but the lesson is not to accumulate it. The lesson is to learn when to surrender it. When to yield. When to ask.","Your Day Number 7 adds the Seeker's longing: you hunger for meaning, depth, and spiritual truth — even as LP8 insists on appearing to need nothing."]}/>
+      <JF id="gs_lp8_wound" prompt="Where did you learn that needing help made you vulnerable to destruction? Be specific — who taught you this? What happened?" lines={5}/>
+      <JF id="gs_day7" prompt="Your Day 7 carries a mystic's longing for meaning. What sense do you make of the path you've walked? What meaning have you found in it?" lines={5}/>
+    </div>}
+    {page==="p1"&&<div>
+      <PH num="THEME ONE" title="The Ego vs. The True Self" sub="The self you constructed vs. the self you actually are"/>
+      <Body>Your ego — your Scorpio armor, your Capricorn rising's controlled exterior, your LP8's projection of power — was constructed for one reason: survival. It worked. It kept you alive. But survival and intimacy require opposite postures. Survival says: show nothing. Intimacy says: show everything.</Body>
+      <WBox title="Scorpio Ego Patterns to Examine" items={["→ Using silence as a weapon — withdrawal that punishes rather than protects","→ All-or-nothing thinking: fully in or fully gone, no middle ground","→ Controlling information — withholding as a form of power","→ Testing loyalty rather than building it — waiting for Emily to fail the test","→ Using intensity and depth as substitutes for actual vulnerability","→ Mistaking stoicism for strength and tenderness for weakness"]}/>
+      <JF id="gs_ego" prompt="Describe your ego self — the one who presents as controlled, impenetrable, and capable of withstanding anything. When did he first appear? What required him?" lines={6}/>
+      <JF id="gs_true_self" prompt="Now describe your true self — the one beneath the armor. What does he feel most of the time when no one is watching? What does he most want, and never ask for?" lines={6}/>
+      <JF id="gs_letter_ego" prompt="A letter from your True Self to your Ego Self — what does your true self want the ego to know?" lines={10}/>
+    </div>}
+    {page==="p2"&&<div>
+      <PH num="THEME TWO" title="Core Wounds & Shame" sub="The architecture of what you carry"/>
+      <Body>Scorpio's core wound is betrayal. Not necessarily one dramatic event — but the accumulated experience of showing someone something real about yourself and having it used against you, or dismissed, or met with absence when you needed presence. That wound teaches a lesson: it is safer to sting first.</Body>
+      <WBox title="The Scorpio-Pisces Shame Architecture" items={["Scorpio Sun: shame lives in the wound of betrayal — 'I trusted and was destroyed.'","Pisces Moon: shame lives in the wound of dissolution — 'I feel too much; I am too much.'","Capricorn Rising: shame lives in the wound of inadequacy — 'I must appear in control always.'","","Together: a man who carries enormous shame while appearing to need no one, feel nothing too openly, and never ask for help."]}/>
+      <JF id="gs_shame_name" prompt="What are you most deeply ashamed of? Name it here, on this page. Shame's power lives in its secrecy. Speak it to the page." lines={6}/>
+      <JF id="gs_shame_emily" prompt="Where in your relationship with Emily does shame run your behavior — where do you react from shame rather than from truth?" lines={5}/>
+      <JF id="gs_shame_hidden" prompt="What parts of yourself have you hidden from Emily that you most need her to know? What would it mean if she saw them and did not leave?" lines={5}/>
+    </div>}
+    {page==="p3"&&<div>
+      <PH num="THEME THREE" title="Inner Child Wounds" sub="The boy who is still inside, making sense of the present"/>
+      <Body>Your inner child is not a metaphor. He is the part of you that formed before you had language or power or choice — and he is still inside, still interpreting the present through the lens of what he learned to survive.</Body>
+      <Body>Your Scorpio Sun child needed: safety in which to show his full feeling, a trustworthy presence who would not use his vulnerability against him, and love that did not come with conditions of stoicism or silence.</Body>
+      <Body>Your Pisces Moon child needed: to be held in his sensitivity, to have someone say "your feelings are not too much, they are real." Instead, he learned to dissolve.</Body>
+      <JF id="gs_little_need" prompt="What did little Greg need that he did not receive? Not abstract — specifically. What was missing in the particular rooms of his particular childhood?" lines={6}/>
+      <JF id="gs_little_emily" prompt="Where do you recognize little Greg showing up with Emily? Which reactions belong to the man you are now, and which belong to the child he was?" lines={5}/>
+      <JF id="gs_letter_little" prompt="Write a letter to little Greg — the one who decided showing vulnerability was fatal. Tell him what you wish someone had told him then:" lines={10}/>
+    </div>}
+    {page==="p4"&&<div>
+      <PH num="THEME FOUR" title="Projection & The Relationship Mirror" sub="Seeing yourself in the person you love most"/>
+      <Body>Projection is the unconscious act of seeing your own shadow in someone else. What you cannot accept in yourself, you will see in your partner — often with irritation, contempt, or a disproportionate emotional charge. Emily is your most potent mirror.</Body>
+      <IBox title="The Pisces ☍ Virgo Moon Opposition — Your Mirror" items={["Your Pisces Moon projects: martyrdom, wordless suffering, silent expectation that Emily should feel what you cannot say.","Emily's Virgo Moon receives: the urge to fix, then frustration when it cannot be fixed.","","Emily's Virgo Moon projects: criticism, the relentless search for what needs improvement.","Your Pisces Moon receives: devastation. Criticism lands as rejection of the entire self.","","The shadow question: What in Emily do you most want to change?","The mirror question: Where does that quality live quietly in you?"]}/>
+      <JF id="gs_proj_trig" prompt="What qualities in Emily create the strongest emotional reaction in you — bigger than the situation warrants? List them honestly." lines={4}/>
+      <JF id="gs_proj_mirror" prompt="For each quality you listed: where does that quality also exist in you — perhaps in a different form, perhaps more hidden? Stay with this. It is the deepest work." lines={5}/>
+      <JF id="gs_proj_teacher" prompt="If Emily were a teacher sent to teach the one lesson your soul most needs — what would that lesson be? And what would it cost you to actually learn it?" lines={4}/>
+    </div>}
+    {page==="p5"&&<div>
+      <PH num="THEME FIVE" title="The Wounded Masculine" sub="What it means to feel deeply in a world that penalized it"/>
+      <Body>The wounded masculine is not a gendered insult. It is what happens when a man's emotional world is systematically denied — when he is taught that to feel deeply is to be weak, that to need anything is to be a burden, that to cry is to be destroyed.</Body>
+      <Body>You, Greg — Scorpio Sun, Pisces Moon, LP8, Day 7, Master Month 11 — were born with one of the most emotionally rich and spiritually sensitive soul blueprints in the zodiac. And you were handed that blueprint in a world that almost certainly did not honor it.</Body>
+      <PBox title="The Wounded Masculine in Your Chart" items={["The Warlord (Scorpio): uses power and control because tenderness once cost him everything","The Mystic in Hiding (Pisces Moon + Day 7): feels the sacred, speaks none of it","The Mountain (Capricorn Rising): appears unmovable because moving once meant danger","The Powerhouse (LP8): equates needing help with catastrophic weakness","","The healing path: learning that the mountain can bow without crumbling."]}/>
+      <JF id="gs_boyhood" prompt="What was it like, growing up, to be a boy who felt as deeply as you do? What happened to that feeling? Where did it go — or where was it forced to go?" lines={5}/>
+      <JF id="gs_tenderness" prompt="What would it mean for you to let Emily see your tenderness — not as a performance of vulnerability, but as a genuine and undefended part of who you are?" lines={5}/>
+    </div>}
+    {page==="p6"&&<div>
+      <PH num="THEME SIX" title="Fear, Control & Surrender" sub="Learning that the mountain can bow without crumbling"/>
+      <Body>Life Path 8 and Scorpio Sun create a formidable relationship with power and control. Not because you are cruel — but because control was your survival. In intimacy, control is the barrier that prevents the very connection you are starving for.</Body>
+      <WBox title="What You Are Most Afraid Of" items={["Showing Emily everything and having her use it against you later","Surrendering control and finding that chaos was right — it was always waiting","That your Pisces Moon's depth of feeling, if fully expressed, will overwhelm her","That recovery means feeling all the things you have spent years not feeling","That you are fundamentally unlovable when the armor is gone"]}/>
+      <JF id="gs_fear_control" prompt="What specific thing are you working hardest to control in your relationship with Emily right now? What outcome are you most trying to prevent?" lines={5}/>
+      <JF id="gs_surrender" prompt="What would you have to release — what belief, what armor, what strategy — to experience genuine surrender and genuine intimacy with Emily?" lines={5}/>
+      <JF id="gs_letter_fear" prompt="A letter to Fear — what you've been protecting, and what you are now willing to risk:" lines={10}/>
+    </div>}
+    {page==="p7"&&<div>
+      <PH num="THEME SEVEN" title="The Sacred Mirror" sub="Shadow work within the relationship"/>
+      <IBox title="Emily + Greg — The Numerological Bond" items={["Emily Life Path 1  +  Greg Life Path 8  =  9","","The vibration of your union is 9 — the number of completion, universal compassion, karmic resolution.","You did not find each other randomly. Something in both of you recognized: this is the person who will show me what I have not yet healed.","","LP8 carries power, authority, and the karma of how power is used.","LP1 carries individuation, leadership, and the karma of self-reliance.","Together: the invitation to complete the cycle — to heal the wound that has been running both your lineages."]} color={P.gold}/>
+      <JF id="gs_union_meaning" prompt="What does the 9 vibration of your union mean to you personally? What cycle do you believe this relationship is here to end?" lines={5}/>
+      <JF id="gs_leo_scorpio" prompt="Emily's Leo Sun needs to be seen and celebrated. Your Scorpio Sun needs to be known in depth and trusted with secrets. Where are these needs in conflict? Where do they complement each other?" lines={5}/>
+      <JF id="gs_what_mirror" prompt="Where has this relationship already transformed you — even when the transformation was painful?" lines={5}/>
+    </div>}
+    {page==="p8"&&<div>
+      <PH num="INTEGRATION" title="The Alchemist Rises" sub="Reclaiming the wholeness that was always yours"/>
+      <PBox title="The Three Symbols of Scorpio — Revisited" items={["The Scorpion — where you started. Brilliant. Survived everything.","The Eagle — where you are going. Elevated perspective. Full terrain.","The Phoenix — the destination. Transformation through fire. Not once. Daily.","","Which version of yourself are you most often operating from right now?"]}/>
+      <JF id="gs_which_version" prompt="Which version of yourself are you most often operating from — Scorpion, Eagle, or Phoenix? What would it take to spend more time as the Eagle or the Phoenix?" lines={5}/>
+      <JF id="gs_integration_declare" prompt="Write a declaration of integration — not a promise to be perfect, but a commitment to be whole. What parts of yourself will you stop locking away?" lines={6}/>
+      <JF id="gs_letter_emily_integrated" prompt="Write a letter to Emily from your most integrated self — not the Scorpion, not the controlled Mountain, but the Eagle who sees clearly and the Phoenix who has chosen to rise:" lines={12}/>
+      <JF id="gs_free_write" prompt="Free writing — whatever the prompts couldn't reach:" lines={12}/>
+    </div>}
+  </WorkbookShell>);
+};
+
+// ═══════════════════════════════════════════════
+// ██████████  EMILY'S WORKBOOKS  ██████████
+// ═══════════════════════════════════════════════
+
+// ── EMILY: RECOVERY & HEALING ──
+const EmilyRecovery = ()=>{
+  const P=EP;const{JF,PH,IBox,WBox,GBox,PBox,Div,H2,H3,Body,MoodRow,MultiSelect,NumRow,Tag,LetterBox}=makeC(P,"emily_recovery");
+  const[page,setPage]=useState("checkin");
+  const pages=[["checkin","Where You Are"],["p1","Understanding Yourself"],["p2","Addiction & You"],["p3","Shadow Work"],["p4","Communication"],["p5","Trust & Repair"],["p6","Recovery Journey"],["p7","Astrology & You"],["p8","Crisis Tools"],["daily","Daily Pages"]];
+  return(<WorkbookShell P={P} title="Coming Home to Yourself" subtitle="Emily's Recovery & Healing Workbook" pages={pages} page={page} setPage={setPage}>
+    {page==="checkin"&&<div>
+      <PH num="BEFORE WE BEGIN" title="Where You Are Right Now" sub="An honest check-in before everything else"/>
+      <Body>This is your personal space for healing and growth. Work at your own pace. There's no timeline. Be completely honest — no one else will see this unless you share it. Write messy, write raw, write real. This is YOUR space.</Body>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",margin:"12px 0"}}>
+        <div><div style={{fontSize:"11px",color:P.muted,fontFamily:"Arial,sans-serif",marginBottom:"5px",fontWeight:"bold",textTransform:"uppercase",letterSpacing:".5px"}}>Today's Date</div><SelfInput sk="emily_recovery_e_checkin_date" P={P}/></div>
+      </div>
+      <MultiSelect id="e_checkin_feelings" label="Right now I'm feeling — circle all that apply:" items={["Hopeful","Scared","Overwhelmed","Numb","Angry","Sad","Motivated","Resistant","Ashamed","Curious","Defensive","Open","Exhausted","Energized","Lost","Ready"]}/>
+      <JF id="e_checkin_why" prompt="What brought you to this workbook right now:" lines={3}/>
+    </div>}
+    {page==="p1"&&<div>
+      <PH num="PART ONE" title="Understanding Yourself" sub="Before the relationship, before the addiction — there is you"/>
+      <H2>Who You Really Are</H2>
+      <Body>Before we dive into problems or patterns, let's start with YOU. Not the struggling you, not the version others see, but who you really are.</Body>
+      <JF id="e1_authentic" prompt="Moments when you feel most like yourself — when you feel authentic, at peace, or in your element. What are those moments?" lines={5}/>
+      <JF id="e1_strengths" prompt="List at least 5 things you're good at or qualities you value in yourself — even now, even through everything:" lines={6}/>
+      <JF id="e1_strengths_survive" prompt="Which of these strengths have helped you survive the hardest times in your life?" lines={4}/>
+      <Div/>
+      <H2>Understanding Your Mental Health</H2>
+      <Body>Knowledge is power. Understanding what's happening in your brain helps you feel less 'broken' and more clear about what you're working with.</Body>
+      <WBox title="Depression: When Your Brain Lies to You" items={["Depression isn't just 'feeling sad.' It's a neurochemical condition affecting serotonin, dopamine, and norepinephrine.","When these chemicals are out of balance, your brain tells you lies:","  · 'Nothing will ever get better' (it can)","  · 'You're worthless' (you're not)","  · 'There's no point in trying' (there is)","These thoughts feel absolutely true when you're depressed. But they're symptoms, not facts."]}/>
+      <JF id="e1_dep_lies" prompt="What lies does your depression tell you most often? Write them down. Then next to each, write: 'This is my depression talking, not reality.'" lines={7}/>
+      <IBox title="BPD: The Emotional Amplifier" items={["BPD isn't about being 'dramatic.' It's about having an emotional system that processes everything at maximum intensity. Most people's emotional volume dial goes 1-10. With BPD, yours naturally runs at 8-15. Small hurts feel catastrophic. Abandonment feels like death. Connection feels like everything.","Common BPD experiences: fear of abandonment that feels physically painful, all-or-nothing thinking, identity confusion, intense unstable relationships, impulsive behaviors when overwhelmed, chronic feelings of emptiness, explosive anger."]}/>
+      <JF id="e1_bpd" prompt="Which of these BPD experiences do you recognize in yourself? How do they show up in your relationship with Greg?" lines={5}/>
+      <IBox title="OCD: The Loop Your Brain Gets Stuck In" items={["OCD is about unwanted thoughts (obsessions) that create anxiety, and behaviors or mental rituals (compulsions) you do to try to make the anxiety go away. OCD is exhausting because your brain creates a problem, offers a 'solution' (the compulsion), but the solution only reinforces the problem."]}/>
+      <JF id="e1_ocd" prompt="What are your most common obsessive thoughts? What compulsions or mental rituals do you do in response?" lines={5}/>
+      <Div/>
+      <H2>Your Patterns: Connecting the Dots</H2>
+      <Body>The repeating cycle: Something triggers emotional pain → Your symptoms amplify the pain → You do something impulsive to escape → Shame deepens → The cycle repeats. This isn't your fault. Your brain is doing its best to protect you with faulty equipment.</Body>
+      <JF id="e1_cycle" prompt="Describe your personal cycle. What triggers it? How does it typically unfold? Where do you usually realize what's happening?" lines={6}/>
+      <JF id="e1_triggers" prompt="List YOUR specific triggers — be as detailed as possible:" lines={6}/>
+      <JF id="e1_warnings" prompt="What are YOUR early warning signs? Pay attention to your body — what happens before you're fully triggered?" lines={4}/>
+    </div>}
+    {page==="p2"&&<div>
+      <PH num="PART TWO" title="Addiction & You" sub="Understanding what happened and why — without shame"/>
+      <Body>Addiction is not a moral failing. It's not weakness. It's not about just 'wanting it bad enough.' Addiction is a neurological condition that hijacks your brain's reward system.</Body>
+      <H2>What Meth Does to Your Brain</H2>
+      <Body>Methamphetamine floods your brain with dopamine — 1,200% higher than normal. After experiencing that surge repeatedly, your brain recalibrates. Normal pleasures feel muted or meaningless. Motivation disappears. Depression intensifies. This is your brain chemistry being fundamentally altered — not weakness.</Body>
+      <JF id="e2_meth_brain" prompt="How has meth use changed what feels pleasurable or meaningful to you? What did you used to enjoy that doesn't work anymore?" lines={5}/>
+      <JF id="e2_why_start" prompt="Be honest with yourself: What does meth give you? What pain does it help you avoid?" lines={5}/>
+      <JF id="e2_taken" prompt="What has meth taken from you?" lines={5}/>
+      <Div/>
+      <H2>Addiction & Your Relationship</H2>
+      <Body>Addiction creates a pattern of broken promises: 'I'll stop' (but you don't), 'I'm not using' (but you are). Each broken promise erodes trust until Greg doesn't believe you — even when you're telling the truth.</Body>
+      <JF id="e2_promises" prompt="How many times have you promised to stop or change? How does it feel to break those promises to yourself and Greg?" lines={5}/>
+      <JF id="e2_together" prompt="How has using together affected your relationship? What does connection look like when you're both high vs. when you're sober?" lines={5}/>
+      <NumRow id="e2_readiness" min={1} max={10} label="Readiness for recovery (1=not ready, 10=completely ready)"/>
+      <JF id="e2_readiness_why" prompt="What would need to change for you to feel more ready?" lines={4}/>
+    </div>}
+    {page==="p3"&&<div>
+      <PH num="PART THREE" title="Shadow Work & Deep Healing" sub="⚠️ Take it slow. Skip what's too much. Come back when you're ready."/>
+      <Body>Your 'shadow' is made up of all the parts of yourself you've rejected, denied, or hidden — even from yourself. Shadow work is about bringing these parts into the light — not to judge them, but to understand them. What you hide in the shadows still controls you. What you bring into awareness, you can transform.</Body>
+      <JF id="e3_unlovable" prompt="What parts of yourself do you believe are unlovable? Where did you learn that these parts were unlovable? Who told you? What happened?" lines={7}/>
+      <JF id="e3_anger" prompt="Think about your rage — the times you've exploded, said things you regret, felt completely out of control. What was your anger protecting you from feeling?" lines={5}/>
+      <JF id="e3_little_emily" prompt="What did little Emily need that she didn't get? What is little Emily still trying to get from Greg, from others, from the world?" lines={5}/>
+      <JF id="e3_shame" prompt="What are you most ashamed of? (Shame loses power when you name it.)" lines={6}/>
+      <JF id="e3_shame_talk" prompt="If you could talk to your shame — tell it what it needs to hear — what would you say?" lines={5}/>
+      <Div/>
+      <H2>⚠️ Trauma — Gentle Approach</H2>
+      <Body>Deep wounds. You don't have to do this now or at all. If continuing, ensure you're in a safe space with support nearby.</Body>
+      <JF id="e3_trauma_body" prompt="When you think about your trauma, where do you feel it in your body?" lines={3}/>
+      <JF id="e3_trauma_greg" prompt="How does your trauma show up in your relationship with Greg?" lines={5}/>
+      <JF id="e3_betrayal" prompt="What betrayals have happened in your relationship? What do you need from Greg to begin healing from them?" lines={5}/>
+    </div>}
+    {page==="p4"&&<div>
+      <PH num="PART FOUR" title="Communication & Connection" sub="Learning to fight better, connect deeper"/>
+      <H2>When You Explode</H2>
+      <JF id="e4_explode_trig" prompt="What triggers you to explode at Greg?" lines={4}/>
+      <JF id="e4_explode_do" prompt="What do you say or do when you explode?" lines={4}/>
+      <JF id="e4_explode_need" prompt="What do you really need in those moments?" lines={3}/>
+      <Div/>
+      <H2>When You Shut Down</H2>
+      <JF id="e4_shutdown_trig" prompt="What makes you shut down with Greg?" lines={3}/>
+      <JF id="e4_shutdown_inside" prompt="When you're shut down, what's happening inside that Greg can't see?" lines={3}/>
+      <Div/>
+      <H2>What Greg Needs to Know</H2>
+      <JF id="e4_letter_greg" prompt="Write a letter to Greg explaining how to reach you when you're struggling:" lines={8}/>
+      <JF id="e4_when_overwhelmed" prompt="When I'm overwhelmed, I need you to:" lines={3}/>
+      <JF id="e4_when_angry" prompt="When I'm angry, what would help:" lines={3}/>
+      <JF id="e4_when_shutdown" prompt="When I'm shutting down, the best thing you can do is:" lines={3}/>
+      <Div/>
+      <H2>Communicating Without Attacking</H2>
+      <IBox title="The 'I Feel' Formula" items={["Instead of attacking, try: 'I feel... because... I need...'","Example: 'I feel unheard because when I'm talking you're on your phone. I need you to put it down and make eye contact.'"]}/>
+      <JF id="e4_i_feel_practice" prompt="Practice reframing your common complaints into 'I feel' statements:" lines={8}/>
+    </div>}
+    {page==="p5"&&<div>
+      <PH num="PART FIVE" title="Trust & Repair" sub="What trust requires, and how to rebuild it"/>
+      <IBox title="The Components of Trust" items={["Reliability — doing what you say, consistently","Honesty — telling the truth even when it's hard","Emotional safety — not weaponizing vulnerabilities","Consistency — showing up the same way, in big moments and small","Accountability — owning mistakes without deflection","Transparency — sharing what's actually going on"]}/>
+      <JF id="e5_trust_damaged" prompt="Which of these has been most damaged in your relationship with Greg? Where have you both broken trust?" lines={6}/>
+      <JF id="e5_greg_broke" prompt="Where has Greg broken your trust? Be specific." lines={5}/>
+      <JF id="e5_emily_broke" prompt="Where have you broken Greg's trust? Be honest — this is the work." lines={5}/>
+      <JF id="e5_accountability_letter" prompt="A letter of accountability to Greg — begin with: 'I take responsibility for...'" lines={10}/>
+      <JF id="e5_commitments" prompt="Specific actions you commit to that would help rebuild trust — be realistic, be consistent:" lines={6}/>
+    </div>}
+    {page==="p6"&&<div>
+      <PH num="PART SIX" title="Your Recovery Journey" sub="The path forward, made real and specific"/>
+      <JF id="e6_scared" prompt="What scares you most about recovery?" lines={4}/>
+      <JF id="e6_gives" prompt="What could recovery give you? What becomes possible?" lines={5}/>
+      <JF id="e6_why" prompt="Your 'Why' for recovery — when it gets hard, you need to remember why. Why do you want to recover?" lines={6}/>
+      <JF id="e6_support" prompt="Who could support your recovery? Who is safe? Who is not?" lines={5}/>
+      <JF id="e6_obstacles" prompt="What are the biggest obstacles to your recovery? What are you most afraid will get in the way?" lines={5}/>
+      <JF id="e6_vision" prompt="Describe your life 2 years into solid recovery. Be specific — what does an average Tuesday look like? What has changed?" lines={7}/>
+    </div>}
+    {page==="p7"&&<div>
+      <PH num="PART SEVEN" title="Astrology & Your Soul" sub="Leo Sun · Virgo Moon · Sagittarius Rising · Life Path 1"/>
+      <H2>☀ Your Leo Sun — The Light You Were Born To Carry</H2>
+      <Body>Leo is the sign of the Sun itself — radiant, creative, generous, proud, and in need of being truly seen. You were born August 2nd under Fixed Fire. At your core you love deeply, create beautifully, and give generously.</Body>
+      <WBox title="Leo Sun — Light & Shadow" items={["THE LIGHT: You love deeply. You create beautifully. You give generously. You lead naturally.","THE SHADOW: When Leo is wounded, the performance begins. You learn to shine because you fear that without the shine, you are not enough. You perform love rather than simply receiving it.",'"The shadow of Leo is not darkness. It is the exhaustion of having to be the Sun."']}/>
+      <JF id="e7_leo_performance" prompt="When did you first learn that being bright, beautiful, or impressive was how you earned love? What happened?" lines={5}/>
+      <JF id="e7_leo_real" prompt="What is the version of you that exists when no one is watching and nothing is at stake? Describe her." lines={5}/>
+      <Div/>
+      <H2>☽ Your Virgo Moon — The Inner World You Keep Quiet</H2>
+      <Body>Your Moon is in Virgo — the healer, the analyst, the perfectionist. Your inner world is constantly assessing, critiquing, organizing, trying to make things better. Including yourself.</Body>
+      <IBox title="Virgo Moon — The Paradox" items={["You perform confidence (Leo Sun) while drowning in private self-doubt (Virgo Moon).","Your inner critic is relentless. You hold yourself to impossible standards, then feel shame when you fall short.","You give to others what you cannot give yourself: care, patience, compassion.",'"I am not enough" is the sentence your Moon whispers while your Sun performs its light.']}/>
+      <JF id="e7_virgo_critic" prompt="What does your inner critic say most often? Write the exact phrases it uses — then ask: would I say this to someone I love?" lines={6}/>
+      <JF id="e7_receiving" prompt="What does it feel like to receive care, help, or love without having done anything to earn it? Where does the discomfort live in your body?" lines={4}/>
+      <Div/>
+      <H2>✦ Life Path 1 — The Pioneer</H2>
+      <IBox title="The LP1 Core Wound" items={['"I need you" is the most terrifying sentence a Life Path 1 can speak.','Your soul came here to master individuation — but not at the cost of connection.','Your Birthday Number is 2: your soul craves partnership even as LP1 drives independence.','This is not contradiction. This is the work.']}/>
+      <JF id="e7_lp1" prompt="How early did you learn to be self-sufficient? What taught you that needing people was dangerous or shameful?" lines={5}/>
+      <JF id="e7_lp1_greg" prompt="In your relationship with Greg: where do you perform independence when you actually need connection? What are you protecting yourself from?" lines={5}/>
+    </div>}
+    {page==="p8"&&<div>
+      <PH num="PART EIGHT" title="Crisis Tools & Daily Practices" sub="The practical tools that keep you grounded"/>
+      <H2>When You're in Crisis — Emergency Tools</H2>
+      <GBox title="STOP Technique" items={["S — Stop. Freeze. Don't move.","T — Take a breath. Deep, slow.","O — Observe. What am I feeling? What am I thinking? What do I want to do?","P — Proceed mindfully. What's the wise choice here?"]}/>
+      <GBox title="5-4-3-2-1 Grounding" items={["Name 5 things you can see","Name 4 things you can touch","Name 3 things you can hear","Name 2 things you can smell","Name 1 thing you can taste"]}/>
+      <JF id="e8_crisis_plan" prompt="What helps YOU specifically in crisis? Write your personal crisis plan:" lines={6}/>
+      <Div/>
+    </div>}
+    {page==="daily"&&<DailyPages P={P} prefix="e_daily" color="emily"/>}
+  </WorkbookShell>);
+};
+
+// ── EMILY: SHADOW WORK ──
+const EmilyShadow = ()=>{
+  const P=EP;const{JF,PH,IBox,WBox,GBox,PBox,Div,H2,Body,MultiSelect,Tag,LetterBox}=makeC(P,"emily_shadow");
+  const[page,setPage]=useState("cover");
+  const pages=[["cover","Cover"],["blueprint","Cosmic Blueprint"],["p1","Ego vs True Self"],["p2","Core Wounds & Shame"],["p3","Inner Child"],["p4","Projection & Mirror"],["p5","Wounded Feminine"],["p6","Fear & Surrender"],["p7","The Sacred Mirror"],["p8","Integration"]];
+  return(<WorkbookShell P={P} title="Into the Dark" subtitle="Emily's Shadow Work Journal" pages={pages} page={page} setPage={setPage}>
+    {page==="cover"&&<div style={{textAlign:"center",padding:"20px 0"}}>
+      <div style={{fontSize:"44px",color:P.gold,marginBottom:"8px"}}>✦</div>
+      <div style={{fontSize:"11px",letterSpacing:"4px",color:P.muted,fontFamily:"Arial,sans-serif",marginBottom:"8px"}}>INTO THE DARK</div>
+      <h1 style={{fontSize:"38px",color:P.text,margin:"0 0 6px"}}>Emily's</h1>
+      <h2 style={{fontSize:"24px",color:P.glight,margin:"0 0 18px",fontStyle:"italic",fontWeight:"normal"}}>Shadow Work Journal</h2>
+      <hr style={{border:"none",borderTop:`1px solid ${P.gold}`,opacity:.35,margin:"0 auto 18px",maxWidth:"200px"}}/>
+      <div style={{margin:"16px 0"}}>{["☀ Leo Sun","☽ Virgo Moon","↑ Sagittarius Rising"].map(t=><Tag key={t} color={P.gold}>{t}</Tag>)}</div>
+      <div style={{margin:"0 0 14px"}}>{["Life Path 1 · The Pioneer","Birthday Number 2 · The Partner"].map(t=><Tag key={t} color={P.purple}>{t}</Tag>)}</div>
+      <div style={{margin:"20px auto",maxWidth:"340px",background:P.ic,border:`1px solid ${P.gold}`,borderRadius:"8px",padding:"20px 22px"}}>
+        <p style={{fontSize:"15px",color:P.muted,fontStyle:"italic",lineHeight:1.9}}>"The cave you fear to enter holds the treasure you seek."</p>
+        <p style={{fontSize:"12px",color:P.dim,fontFamily:"Arial,sans-serif",marginTop:"6px"}}>— Joseph Campbell</p>
+      </div>
+    </div>}
+    {page==="blueprint"&&<div>
+      <PH num="YOUR COSMIC BLUEPRINT" title="The Astrology & Numerology of Your Soul" sub="Understanding the design you were born with"/>
+      <H2>☀ Your Leo Sun — The Light & The Performance</H2>
+      <WBox title="Leo Sun — Light & Shadow" items={["THE LIGHT: You love deeply. You create beautifully. You give generously. You lead naturally.","THE SHADOW: When Leo is wounded, the performance begins. You learn to shine because you fear that without the shine, you are not enough.",'"The shadow of Leo is not darkness. It is the exhaustion of having to be the Sun."']}/>
+      <JF id="es_leo_wound" prompt="When did you first learn that being bright, beautiful, or impressive was how you earned love? How young were you? What happened?" lines={6}/>
+      <JF id="es_performing" prompt="Where in your life are you performing — presenting a version of yourself — instead of simply being? With Greg, with others, with yourself?" lines={5}/>
+      <Div/>
+      <H2>☽ Your Virgo Moon — The Inner World You Keep Quiet</H2>
+      <IBox title="The Leo-Virgo Paradox" items={["Leo wants to be worshipped. Virgo believes it deserves criticism.","Leo performs to gain love. Virgo suspects the love is for the performance, not the person.","Leo shines brightly. Virgo Moon whispers: 'If they saw the real you, they would leave.'","This is your internal war. And it is exhausting."]}/>
+      <JF id="es_virgo_critic" prompt="What does your inner critic say most often? Write the exact phrases it uses. These are the lies your Virgo Moon tells your Leo Sun." lines={6}/>
+      <JF id="es_double_standard" prompt="Where do you hold yourself to a standard you would never apply to Greg, or to anyone you love? What does that double standard reveal?" lines={4}/>
+      <Div/>
+      <H2>↑ Sagittarius Rising — The Mask You Show the World</H2>
+      <Body>Your Sagittarius Rising presents as expansive, free-spirited, philosophical, adventurous. But beneath that mask is a fixed Leo Sun who desperately needs to belong, and a Virgo Moon who is terrified of being seen as imperfect. Your Sagittarius mask offers you freedom from both — if you never stay still long enough, no one can see the wounds underneath.</Body>
+      <JF id="es_sag_bypass" prompt="In what ways do you use philosophy, spirituality, optimism, or 'bigger picture thinking' to avoid sitting with pain? With Greg specifically?" lines={5}/>
+      <Div/>
+      <H2>✦ Life Path 1 — The Pioneer</H2>
+      <WBox title="The LP1 Core Wound — and the Birthday 2 Paradox" items={['"I need you" is the most terrifying sentence a Life Path 1 can speak.','Your soul came here to master individuation — but not at the cost of connection.','The sacred tension: your Birthday Number 2 craves deep partnership even as LP1 drives you toward independence.','This is not contradiction. This is the work.']}/>
+      <JF id="es_lp1_need" prompt="How early did you learn to be self-sufficient? What happened that taught you that needing people was dangerous or shameful?" lines={5}/>
+      <JF id="es_lp1_greg" prompt="In your relationship with Greg: where do you perform independence when you actually need connection? What are you protecting yourself from?" lines={5}/>
+    </div>}
+    {page==="p1"&&<div>
+      <PH num="THEME ONE" title="The Ego vs. The True Self" sub="The self you constructed vs. the self you actually are"/>
+      <Body>Your ego — your Leo Sun's performance, your Sagittarius mask, your LP1 independence — was built for survival. It is the self you constructed to be loved, safe, and accepted in a world that conditioned you early. Your true self lives underneath all of that.</Body>
+      <WBox title="Leo Ego Patterns to Examine" items={["→ Needing to be the center, then feeling ashamed for needing it","→ Performing strength so no one sees the fear underneath","→ Using charm and warmth as control — keeping people at the distance you manage","→ Pride that prevents you from admitting when you are wrong, lost, or hurting","→ Seeking admiration from Greg because you cannot fully give it to yourself"]}/>
+      <JF id="es_ego_self" prompt="Describe your ego self — the version of you that performs, manages impressions, protects herself through shine and charm. When did she first appear?" lines={6}/>
+      <JF id="es_true_self" prompt="Now describe your true self — the one beneath the performance. What does she feel most of the time? What does she most want? What is she most afraid to ask for?" lines={6}/>
+      <JF id="es_letter_ego" prompt="A letter from your True Self to your Ego Self:" lines={10}/>
+    </div>}
+    {page==="p2"&&<div>
+      <PH num="THEME TWO" title="Core Wounds & Shame" sub="The places inside that have never been fully witnessed"/>
+      <Body>Shame is the emotion that grows in the gap between who you are and who you believe you should be. It thrives in secrecy. It loses power the moment it is spoken, witnessed, and not destroyed by love.</Body>
+      <WBox title="The Leo-Virgo Shame Paradox" items={["Leo wants to be worshipped. Virgo believes it deserves criticism.","Leo performs to gain love. Virgo suspects the love is for the performance, not the person.","Leo shines brightly. Virgo Moon whispers: 'If they saw the real you, they would leave.'","Substances offered a temporary cease-fire — a moment when the critic went quiet and the performer could rest. Understanding this is not excuse. It is a doorway."]}/>
+      <JF id="es_shame_name" prompt="What are you most deeply ashamed of? Name it here. Shame dissolves in the light of its own naming." lines={6}/>
+      <JF id="es_too_much" prompt="Where did you first learn that you were 'too much'? Where did you first learn you were 'not enough'?" lines={5}/>
+      <JF id="es_hidden_greg" prompt="What parts of yourself have you hidden from Greg that you most need him to know? What would it mean if he saw them and didn't leave?" lines={5}/>
+    </div>}
+    {page==="p3"&&<div>
+      <PH num="THEME THREE" title="Inner Child Wounds" sub="The little girl who is still inside, making sense of the present"/>
+      <Body>Your inner child is the part of you that was formed before you had the language, the power, or the resources to protect yourself. She is not the past — she is alive inside you right now, making sense of the present through the lens of what she learned then.</Body>
+      <Body>Your Leo Sun child needed to be seen, celebrated, and told she was magnificent simply for existing — not for what she produced or performed. Your Virgo Moon child became the internal monitor — exquisitely sensitive to disapproval, hyperattuned to others' moods, skilled at anticipating needs before they became problems.</Body>
+      <JF id="es_little_need" prompt="What did little Emily need that she didn't fully receive? Love, safety, validation, consistency, freedom, protection? Be specific." lines={5}/>
+      <JF id="es_little_greg" prompt="Where do you recognize little Emily showing up in your relationship with Greg? What does she do when she feels unseen, uncelebrated, or criticized?" lines={5}/>
+      <JF id="es_letter_little" prompt="Write a letter to your inner child — the one who decided she had to earn love. Tell her what you wish someone had told her then:" lines={10}/>
+    </div>}
+    {page==="p4"&&<div>
+      <PH num="THEME FOUR" title="Projection & The Relationship Mirror" sub="Seeing yourself in the person you love most"/>
+      <Body>Projection is the unconscious act of seeing your own shadow in another person. What we cannot own in ourselves, we see — often with great irritation or fascination — in someone else. Greg is your most powerful mirror.</Body>
+      <IBox title="The Virgo ☍ Pisces Moon Opposition — Your Mirror" items={["Your Virgo Moon projects: criticism, high standards, the need to fix what's broken.","Greg's Pisces Moon receives: absorbs criticism, feels it as rejection, retreats or dissolves.","","Greg's Pisces Moon projects: martyrdom, helplessness, emotional flooding.","Your Virgo Moon receives: the urge to fix him, then resentment when he stays broken.","","The shadow question: What in Greg do you most want to change?","The mirror question: Where does that quality live in you — unacknowledged?"]}/>
+      <JF id="es_proj_trig" prompt="What qualities in Greg trigger the strongest emotional reaction in you — irritation, contempt, helplessness, or rage? List them honestly." lines={4}/>
+      <JF id="es_proj_mirror" prompt="For each quality you listed: where, quietly, secretly, does that quality also exist in you? This is the hardest work. Stay with it." lines={5}/>
+      <JF id="es_proj_taught" prompt="What has loving Greg shown you about yourself that you could not have seen alone?" lines={5}/>
+    </div>}
+    {page==="p5"&&<div>
+      <PH num="THEME FIVE" title="The Wounded Feminine" sub="Learning to receive what you've spent your life giving"/>
+      <Body>The wounded feminine shows up as the woman who learned that being needed was safer than being loved. That producing was safer than simply being. That shining was a defense against being truly seen.</Body>
+      <WBox title="The Wounded Feminine Archetypes in Your Chart" items={["The Queen (Leo): magnificent in her power, secretly terrified of being dethroned","The Handmaiden (Virgo Moon): serves others to earn the right to exist and be loved","The Wanderer (Sagittarius Rising): keeps moving so no one can see how lost she is","The Pioneer (LP1): blazes trails alone so she never has to admit she needs company","","The healing path: learning to receive. To ask. To rest without producing."]}/>
+      <JF id="es_give_receive" prompt="Where in your life do you give far more than you receive? What prevents you from receiving? What story do you tell yourself about what you deserve?" lines={5}/>
+      <JF id="es_let_greg" prompt="What would it mean for you to let Greg truly care for you — not the Leo performance, not the Virgo helpfulness — but you, in your most honest, vulnerable form?" lines={5}/>
+    </div>}
+    {page==="p6"&&<div>
+      <PH num="THEME SIX" title="Fear, Control & Surrender" sub="The most terrifying word — and the most necessary medicine"/>
+      <Body>Life Path 1 and Leo Sun create a powerful drive for control — because control is how you learned to stay safe. If you manage the environment perfectly, if you stay ahead of disappointment, if you never fully depend on anyone, you cannot be devastated. Or so the story goes.</Body>
+      <Body>Surrender is the most terrifying word for a Life Path 1 Leo Sun. And it is the exact medicine your soul has come here to learn.</Body>
+      <WBox title="What You Are Most Afraid Of" items={["Being truly known — and found wanting","Needing Greg and having him disappear","Letting go of control and discovering you cannot hold yourself together","That you are too much for anyone to love without a performance attached","That healing means you will have to feel everything you've been outrunning"]}/>
+      <JF id="es_fear_relationship" prompt="What are you most afraid of in your relationship with Greg right now? What outcome are you working hardest to prevent?" lines={5}/>
+      <JF id="es_surrender_what" prompt="What would you have to stop controlling to experience genuine intimacy with Greg? What would you have to let be uncertain?" lines={5}/>
+      <JF id="es_letter_fear" prompt="A letter to Fear — what you've been protecting, and what you are now willing to risk:" lines={10}/>
+    </div>}
+    {page==="p7"&&<div>
+      <PH num="THEME SEVEN" title="The Sacred Mirror" sub="Shadow work within the relationship"/>
+      <IBox title="Emily + Greg — The Numerological Bond" items={["Emily Life Path 1  +  Greg Life Path 8  =  9","","The vibration of your union is 9 — the number of completion, universal compassion, karmic resolution.","You did not find each other randomly. The 9 vibration means this relationship exists to complete something — to heal patterns that may have run through both your childhoods.","","The Pioneer (1) meets The Powerhouse (8). Creation meets Authority.","Together: world-builders — when aligned. In shadow: two dominant forces in a power struggle."]} color={P.gold}/>
+      <IBox title="Leo ☐ Scorpio — The Fixed Sign Square" items={["You and Greg are both Fixed signs: Leo (Fixed Fire) and Scorpio (Fixed Water).","The square aspect = friction, tension, growth, and irresistible magnetism.","Fixed signs do not bend easily. You are both certain you are right.","You are both capable of extraordinary loyalty and extraordinary stubbornness.","The gift of this square: you will never be bored. You will always be challenged.","The challenge: learning when to yield. Learning that yielding is not losing."]}/>
+      <JF id="es_union_meaning" prompt="What does the 9 vibration of your union mean to you personally? What do you believe this relationship is here to heal or complete?" lines={5}/>
+      <JF id="es_yield" prompt="What would it look like for you to yield — not in defeat but in wisdom — in a conflict with Greg? What would have to be true for that to feel safe?" lines={5}/>
+    </div>}
+    {page==="p8"&&<div>
+      <PH num="INTEGRATION" title="Bringing the Shadow Into the Light" sub="Reclaiming the wholeness that was always yours"/>
+      <Body>Integration does not mean you become perfect. It means you stop pretending certain parts of you don't exist. It means the Leo performer and the Virgo critic and the Sagittarius escapist and the LP1 loner all get a seat at the table — and you get to choose which one leads.</Body>
+      <JF id="es_exile_welcome" prompt="Which exiled part of yourself is most ready to be welcomed home? What would it mean to stop fighting it?" lines={5}/>
+      <JF id="es_declare" prompt="Write a declaration of integration — not a promise to be perfect, but a commitment to be whole. What parts of yourself will you stop abandoning?" lines={6}/>
+      <JF id="es_letter_greg" prompt="Write a letter to Greg from your most integrated self — not the Leo performer, not the Virgo critic, not the Sagittarius wanderer. From the truest, most whole version of you:" lines={12}/>
+      <JF id="es_free_write" prompt="Free writing — whatever the prompts couldn't reach:" lines={12}/>
+    </div>}
+  </WorkbookShell>);
+};
+
+// ═══════════════════════════════════════════════
+// ██████████  COUPLES WORKBOOKS  ██████████
+// ═══════════════════════════════════════════════
+
+// ── COUPLES: OUR JOURNEY TOGETHER ──
+const OurJourney = ()=>{
+  const P=CP;const{JF,PH,IBox,WBox,GBox,PBox,Div,H2,H3,Body,MoodRow,MultiSelect,NumRow,Tag,LetterBox}=makeC(P,"couple_journey");
+  const[page,setPage]=useState("cover");
+  const pages=[["cover","Cover"],["p1","Discovering Each Other"],["p2","Emotional Intimacy"],["p3","Gratitude & Appreciation"],["p4","Conflict & Repair"],["p5","The Cosmic Connection"],["p6","Recovery Together"],["p7","Dreams & Future"],["weekly","Weekly Check-In"]];
+  return(<WorkbookShell P={P} title="Our Journey Together" subtitle="Emily & Greg's Couples Workbook" pages={pages} page={page} setPage={setPage}>
+    {page==="cover"&&<div style={{textAlign:"center",padding:"20px 0"}}>
+      <div style={{fontSize:"44px",color:P.gold,marginBottom:"8px"}}>✦</div>
+      <h1 style={{fontSize:"38px",color:P.text,margin:"0 0 6px"}}>Our Journey</h1>
+      <h2 style={{fontSize:"24px",color:P.glight,margin:"0 0 18px",fontStyle:"italic",fontWeight:"normal"}}>Together</h2>
+      <hr style={{border:"none",borderTop:`1px solid ${P.gold}`,opacity:.35,margin:"0 auto 18px",maxWidth:"200px"}}/>
+      <p style={{fontSize:"14px",color:P.muted,fontStyle:"italic",margin:"0 0 20px",fontFamily:"Georgia,serif"}}>A Couples Guided Workbook & Journal</p>
+      <div style={{margin:"16px 0"}}>{["Emily & Greg","Life Path 1 + 8 = 9","Leo ☐ Scorpio · Virgo ☍ Pisces Moon"].map(t=><Tag key={t} color={P.gold}>{t}</Tag>)}</div>
+      <div style={{margin:"20px auto",maxWidth:"360px",background:P.ic,border:`1px solid ${P.gold}`,borderRadius:"8px",padding:"20px 22px",lineHeight:1.9}}>
+        <p style={{fontSize:"14px",color:P.muted,fontStyle:"italic",marginBottom:"10px",fontFamily:"Georgia,serif"}}>How to use this workbook:</p>
+        <p style={{fontSize:"13px",color:P.text+"BB",fontFamily:"Arial,sans-serif",lineHeight:1.8}}>Answer each section on your own first. Be completely honest — the details matter. Then come together and share what you wrote. That's where the healing happens.</p>
+      </div>
+    </div>}
+    {page==="p1"&&<div>
+      <PH num="PART ONE" title="Discovering Each Other" sub="Learning who you are — and who you become together"/>
+      <H2>All About Me — Emily's Answers</H2>
+      <JF id="c1_em_unwind" prompt="Emily: My favorite ways to unwind are..." lines={3}/>
+      <JF id="c1_em_song" prompt="Emily: A song that makes me feel something deep is..." lines={2}/>
+      <JF id="c1_em_stress" prompt="Emily: When I'm stressed, I tend to..." lines={3}/>
+      <JF id="c1_em_dream" prompt="Emily: A secret dream I carry with me is..." lines={3}/>
+      <JF id="c1_em_memory" prompt="Emily: A childhood memory that shaped who I am..." lines={4}/>
+      <JF id="c1_em_love_lang" prompt="Emily: My love language is... and here's how I show love..." lines={4}/>
+      <JF id="c1_em_loved" prompt="Emily: I feel most loved when..." lines={3}/>
+      <Div/>
+      <H2>All About Me — Greg's Answers</H2>
+      <JF id="c1_gr_unwind" prompt="Greg: My favorite ways to unwind are..." lines={3}/>
+      <JF id="c1_gr_song" prompt="Greg: A song that makes me feel something deep is..." lines={2}/>
+      <JF id="c1_gr_stress" prompt="Greg: When I'm stressed, I tend to..." lines={3}/>
+      <JF id="c1_gr_dream" prompt="Greg: A secret dream I carry with me is..." lines={3}/>
+      <JF id="c1_gr_memory" prompt="Greg: A childhood memory that shaped who I am..." lines={4}/>
+      <JF id="c1_gr_love_lang" prompt="Greg: My love language is... and here's how I show love..." lines={4}/>
+      <JF id="c1_gr_loved" prompt="Greg: I feel most loved when..." lines={3}/>
+      <Div/>
+      <H2>What Drew Us Together</H2>
+      <JF id="c1_em_impression" prompt="Emily: My first impression of Greg was..." lines={3}/>
+      <JF id="c1_gr_impression" prompt="Greg: My first impression of Emily was..." lines={3}/>
+      <JF id="c1_em_admire" prompt="Emily: The qualities I most admire in Greg are..." lines={4}/>
+      <JF id="c1_gr_admire" prompt="Greg: The qualities I most admire in Emily are..." lines={4}/>
+      <JF id="c1_em_fell" prompt="Emily: A moment I fell in love with Greg all over again..." lines={3}/>
+      <JF id="c1_gr_fell" prompt="Greg: A moment I fell in love with Emily all over again..." lines={3}/>
+      <Div/>
+      <H2>Our Love Story Timeline</H2>
+      <JF id="c1_met" prompt="How we met..." lines={3}/>
+      <JF id="c1_first_date" prompt="Our first date..." lines={3}/>
+      <JF id="c1_knew" prompt="When I knew this was special..." lines={3}/>
+      <JF id="c1_challenge" prompt="A challenge we overcame together..." lines={4}/>
+      <JF id="c1_favorite" prompt="A favorite recent memory..." lines={3}/>
+    </div>}
+    {page==="p2"&&<div>
+      <PH num="PART TWO" title="Emotional Intimacy" sub="Opening your hearts — gently, bravely, together"/>
+      <IBox title="The Vulnerability Practice — Ground Rules" items={["✓ Listen fully — no interrupting, no fixing, no advising","✓ Hold space — let your partner feel safe to be honest","✓ No judgment — vulnerability is not weakness; it's strength","✓ After sharing, say: 'Thank you for trusting me.'"]}/>
+      <H2>Vulnerability Prompts — Choose One Each Week</H2>
+      <JF id="c2_em_vuln" prompt="Emily's vulnerability share (choose one): Something I'm afraid to say out loud... / A time I felt unseen in our relationship... / Something from my past that still affects me... / A need I haven't been expressing... / A hope I'm afraid to voice..." lines={7}/>
+      <JF id="c2_gr_vuln" prompt="Greg's vulnerability share (choose one of the same prompts):" lines={7}/>
+      <Div/>
+      <H2>Fears, Dreams & Hopes</H2>
+      <JF id="c2_em_fears" prompt="Emily: My biggest fears..." lines={4}/>
+      <JF id="c2_em_dreams" prompt="Emily: My deepest dreams..." lines={4}/>
+      <JF id="c2_em_hopes" prompt="Emily: My hopes for us..." lines={4}/>
+      <JF id="c2_gr_fears" prompt="Greg: My biggest fears..." lines={4}/>
+      <JF id="c2_gr_dreams" prompt="Greg: My deepest dreams..." lines={4}/>
+      <JF id="c2_gr_hopes" prompt="Greg: My hopes for us..." lines={4}/>
+      <Div/>
+      <H2>How Well Do You Know Each Other?</H2>
+      <JF id="c2_em_about_greg_fear" prompt="Emily's answer: Greg's greatest fear is..." lines={2}/>
+      <JF id="c2_em_about_greg_happy" prompt="Emily's answer: What makes Greg happiest is..." lines={2}/>
+      <JF id="c2_em_about_greg_wish" prompt="Emily's answer: Something Greg wishes I understood better is..." lines={2}/>
+      <JF id="c2_gr_about_emily_fear" prompt="Greg's answer: Emily's greatest fear is..." lines={2}/>
+      <JF id="c2_gr_about_emily_happy" prompt="Greg's answer: What makes Emily happiest is..." lines={2}/>
+      <JF id="c2_gr_about_emily_wish" prompt="Greg's answer: Something Emily wishes I understood better is..." lines={2}/>
+      <JF id="c2_compare" prompt="After comparing answers — what surprised you? What did you get right?" lines={5}/>
+    </div>}
+    {page==="p3"&&<div>
+      <PH num="PART THREE" title="Gratitude & Appreciation" sub="Noticing the beauty you already have"/>
+      <Body>Research consistently shows that couples who regularly express appreciation have stronger, more resilient relationships. This is especially true in recovery — when it's easy to focus only on what's broken.</Body>
+      <H2>Daily Appreciation Tracker</H2>
+      <Body>Each day, take 60 seconds to think of one thing you appreciate about your partner. Write it here, then share it — out loud, in a note, or in a text.</Body>
+      {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(day=>(
+        <div key={day}>
+          <div style={{fontSize:"11px",color:P.muted,fontFamily:"Arial,sans-serif",marginBottom:"4px",fontWeight:"bold",textTransform:"uppercase",letterSpacing:".5px"}}>{day}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"8px"}}>
+            <JF id={`c3_em_${day}`} prompt="Emily's appreciation:" lines={2}/>
+            <JF id={`c3_gr_${day}`} prompt="Greg's appreciation:" lines={2}/>
+          </div>
+        </div>
+      ))}
+      <Div/>
+      <H2>The Gratitude Jar — First 5</H2>
+      <Body>Write your first 5 gratitudes here to get started. These are things about each other or about your relationship that you are genuinely grateful for — big or small.</Body>
+      <JF id="c3_em_gratitudes" prompt="Emily's 5 gratitudes (for Greg or for us):" lines={6}/>
+      <JF id="c3_gr_gratitudes" prompt="Greg's 5 gratitudes (for Emily or for us):" lines={6}/>
+    </div>}
+    {page==="p4"&&<div>
+      <PH num="PART FOUR" title="Conflict & Repair" sub="Learning to fight in a way that brings you closer, not further apart"/>
+      <IBox title="The 4 Patterns That Destroy Relationships (Gottman)" items={["Criticism: attacking character vs. making a specific complaint","Contempt: sarcasm, eye-rolling, disgust — the most destructive","Defensiveness: deflecting responsibility, making yourself the victim","Stonewalling: shutting down, checking out, going silent as punishment","","These four patterns are the warning signs. Recognizing them in yourselves — not just in each other — is the first step."]}/>
+      <JF id="c4_em_fight_pattern" prompt="Emily: In conflict, I tend to... (be honest about which patterns you use)" lines={4}/>
+      <JF id="c4_gr_fight_pattern" prompt="Greg: In conflict, I tend to..." lines={4}/>
+      <Div/>
+      <H2>What I Need From You When We Fight</H2>
+      <JF id="c4_em_needs_in_conflict" prompt="Emily: What I most need from Greg when we're in conflict is..." lines={4}/>
+      <JF id="c4_gr_needs_in_conflict" prompt="Greg: What I most need from Emily when we're in conflict is..." lines={4}/>
+      <JF id="c4_em_repair" prompt="Emily: What helps me come back after a fight and feel reconnected is..." lines={3}/>
+      <JF id="c4_gr_repair" prompt="Greg: What helps me come back after a fight and feel reconnected is..." lines={3}/>
+      <Div/>
+      <H2>Letters of Repair</H2>
+      <JF id="c4_em_repair_letter" prompt="Emily: A letter of repair — something I want Greg to know about how conflict affects me, and what I'm willing to do differently:" lines={8}/>
+      <JF id="c4_gr_repair_letter" prompt="Greg: A letter of repair — something I want Emily to know about how conflict affects me, and what I'm willing to do differently:" lines={8}/>
+    </div>}
+    {page==="p5"&&<div>
+      <PH num="PART FIVE" title="The Cosmic Connection" sub="What the stars and numbers say about Emily & Greg"/>
+      <IBox title="Your Union's Numerological Vibration" items={["Emily Life Path 1  +  Greg Life Path 8  =  9","The 9 vibration: completion, karmic resolution, universal compassion.","This relationship did not happen randomly. The 9 means you are here to complete something together — to heal patterns that may have run through both your lineages for longer than either of you.","LP1 (Emily) = the initiator, the pioneer, the individualist.","LP8 (Greg) = the powerhouse, the authority, the karma-worker.","Together: unstoppable when aligned. Creative vision meets executive power."]} color={P.gold}/>
+      <IBox title="Leo ☐ Scorpio — The Fixed Sign Square" items={["You are both Fixed signs: Leo (Fixed Fire) + Scorpio (Fixed Water).","Fixed signs do not bend easily. Both of you are certain you are right. Both of you love with totality. Both of you can wound with that same totality when you feel betrayed.","The gift of this square: you will never be bored. You will always be challenged. You will always have the chance to grow — together."]}/>
+      <IBox title="Virgo ☍ Pisces Moon Opposition — The Emotional Mirror" items={["Emily's Virgo Moon: emotional security through order, service, reliability. The inner critic runs loud. Criticism lands in the nervous system as danger.","Greg's Pisces Moon: emotional world is oceanic — feels everything, absorbs others' pain, prone to dissolution and escapism.","Together: Emily's Virgo critiques what Greg's Pisces absorbs. Greg's Pisces floods what Emily's Virgo tries to organize. You are literally each other's emotional mirror — and each other's greatest emotional teacher."]}/>
+      <JF id="c5_em_union" prompt="Emily: What does the 9 vibration of our union mean to you? What do you believe this relationship is here to heal or complete?" lines={5}/>
+      <JF id="c5_gr_union" prompt="Greg: What does the 9 vibration of our union mean to you? What do you believe this relationship is here to heal or complete?" lines={5}/>
+      <JF id="c5_mirror" prompt="Both: Where do you see yourselves mirroring each other most clearly — in both the gifts and the wounds?" lines={5}/>
+    </div>}
+    {page==="p6"&&<div>
+      <PH num="PART SIX" title="Recovery Together" sub="Two people healing, side by side"/>
+      <Body>When both partners are in recovery, the relationship becomes both the greatest support and the greatest trigger. You are each other's history. You share the damage and the love simultaneously. Recovery asks you to rebuild both yourselves and your relationship at the same time — which is one of the hardest things a couple can do.</Body>
+      <JF id="c6_em_hardest" prompt="Emily: The hardest part of being in recovery while also being in this relationship is..." lines={5}/>
+      <JF id="c6_gr_hardest" prompt="Greg: The hardest part of being in recovery while also being in this relationship is..." lines={5}/>
+      <JF id="c6_em_support" prompt="Emily: The way I most need Greg to support my recovery is..." lines={4}/>
+      <JF id="c6_gr_support" prompt="Greg: The way I most need Emily to support my recovery is..." lines={4}/>
+      <JF id="c6_em_trigger" prompt="Emily: Greg accidentally triggers me when he... (not to blame him — to build understanding)" lines={4}/>
+      <JF id="c6_gr_trigger" prompt="Greg: Emily accidentally triggers me when she... (not to blame her — to build understanding)" lines={4}/>
+      <JF id="c6_together_vision" prompt="Together: What does our relationship look like in 2 years of solid recovery? What are we building toward?" lines={7}/>
+    </div>}
+    {page==="p7"&&<div>
+      <PH num="PART SEVEN" title="Dreams & Future" sub="The life you're building together"/>
+      <JF id="c7_em_vision" prompt="Emily: My vision for us in 5 years — what does our everyday life look like? What are we doing? How do we feel?" lines={7}/>
+      <JF id="c7_gr_vision" prompt="Greg: My vision for us in 5 years — what does our everyday life look like? What are we doing? How do we feel?" lines={7}/>
+      <JF id="c7_bucket_together" prompt="Our couples bucket list — things we want to do together, no limits:" lines={10}/>
+      <JF id="c7_em_promise" prompt="Emily: One promise I am making to this relationship right now:" lines={4}/>
+      <JF id="c7_gr_promise" prompt="Greg: One promise I am making to this relationship right now:" lines={4}/>
+      <JF id="c7_letter_to_us" prompt="A letter from both of you to your future selves — to be read on your next anniversary. What do you want to remember? What do you want to be true?" lines={12}/>
+    </div>}
+    {page==="weekly"&&<div>
+      <PH num="WEEKLY RITUAL" title="Weekly Connection Check-In" sub="Set aside 15 minutes. Answer honestly. Talk through it together."/>
+      <Body>Use a new entry each week. Come back to this page every 7 days. The ritual matters as much as the answers.</Body>
+      {Array.from({length:8},(_,i)=>i+1).map(wk=>(
+        <div key={wk} style={{margin:"16px 0",padding:"16px",background:P.ic,border:`1px solid ${P.border}`,borderRadius:"8px"}}>
+          <div style={{fontSize:"12px",color:P.gold,fontFamily:"Arial,sans-serif",fontWeight:"bold",marginBottom:"12px",letterSpacing:".5px"}}>WEEK {wk}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}}>
+            {[["em","Emily's connection (0-10)"],["gr","Greg's connection (0-10)"]].map(([who,lbl])=>{
+              const sk=`couple_journey_c_week${wk}_${who}_num`;
+              const [v,setV]=useState(()=>{const s=localStorage.getItem(sk);return s?parseInt(s):null;});
+              return(<div key={who}>
+                <div style={{fontSize:"10px",color:P.muted,fontFamily:"Arial,sans-serif",marginBottom:"4px",textTransform:"uppercase",letterSpacing:".5px"}}>{lbl}</div>
+                <div style={{display:"flex",gap:"3px",flexWrap:"wrap"}}>
+                  {[0,1,2,3,4,5,6,7,8,9,10].map(n=><button key={n} onClick={()=>{const nv=v===n?null:n;setV(nv);try{if(nv!==null)localStorage.setItem(sk,String(nv));else localStorage.removeItem(sk)}catch{};}} style={{padding:"3px 7px",borderRadius:"10px",border:`1px solid ${v===n?P.gold:P.border}`,background:v===n?P.gold+"30":"transparent",color:v===n?P.glight:P.muted,cursor:"pointer",fontSize:"11px",fontFamily:"Arial,sans-serif"}}>{n}</button>)}
+                </div>
+              </div>);
+            })}
+          </div>
+          <JF id={`c_week${wk}_felt`} prompt="How did this week feel overall?" lines={2}/>
+          <JF id={`c_week${wk}_close`} prompt="One moment this week we felt close:" lines={2}/>
+          <JF id={`c_week${wk}_need`} prompt="Something I need from you right now:" lines={2}/>
+          <JF id={`c_week${wk}_forward`} prompt="One thing we want to work on together next week:" lines={2}/>
+        </div>
+      ))}
+    </div>}
+  </WorkbookShell>);
+};
+
+// ── COUPLES: LETTERS BETWEEN US ──
+const LettersBetweenUs = ()=>{
+  const P=CP;const{JF,PH,IBox,WBox,GBox,Div,H2,Body,Tag,LetterBox}=makeC(P,"couple_letters");
+  const[page,setPage]=useState("cover");
+  const pages=[["cover","Cover"],["em_to_gr","Emily → Greg"],["gr_to_em","Greg → Emily"],["unsent","Letters Never Sent"],["future","To Our Future Selves"]];
+  return(<WorkbookShell P={P} title="Letters Between Us" subtitle="A Space for What's Hard to Say Out Loud" pages={pages} page={page} setPage={setPage}>
+    {page==="cover"&&<div style={{textAlign:"center",padding:"20px 0"}}>
+      <div style={{fontSize:"44px",color:P.gold,marginBottom:"8px"}}>✉</div>
+      <h1 style={{fontSize:"38px",color:P.text,margin:"0 0 6px"}}>Letters</h1>
+      <h2 style={{fontSize:"24px",color:P.glight,margin:"0 0 18px",fontStyle:"italic",fontWeight:"normal"}}>Between Us</h2>
+      <hr style={{border:"none",borderTop:`1px solid ${P.gold}`,opacity:.35,margin:"0 auto 18px",maxWidth:"200px"}}/>
+      <p style={{fontSize:"14px",color:P.muted,fontStyle:"italic",fontFamily:"Georgia,serif",maxWidth:"320px",margin:"0 auto 20px",lineHeight:1.9}}>Some things are easier to write than to say. This space is for the words that need to exist before they can be spoken.</p>
+      <IBox title="How to Use This Space" items={["Write your letters here. Take your time. Don't edit.","Share them when you feel ready — not before.","You do not have to share every letter. Some are just for you.","The act of writing is healing, even if no one else reads it."]}/>
+    </div>}
+    {page==="em_to_gr"&&<div>
+      <PH num="EMILY → GREG" title="Letters from Emily to Greg" sub="Say what needs to be said"/>
+      {[1,2,3,4,5].map(n=>(
+        <div key={n} style={{marginBottom:"24px"}}>
+          <div style={{fontSize:"11px",color:P.gold,fontFamily:"Arial,sans-serif",fontWeight:"bold",marginBottom:"8px",letterSpacing:".5px"}}>LETTER {n}</div>
+          <div style={{marginBottom:"6px"}}><SelfInput sk={`couple_letters_c_em_gr_title_${n}`} placeholder="What this letter is about (optional)..." P={P}/></div>
+          <JF id={`c_em_gr_${n}`} prompt="Dear Greg," lines={14}/>
+          <JF id={`c_em_gr_shared_${n}`} prompt="Have you shared this letter? If yes — what was Greg's response? How did it feel?" lines={4}/>
+        </div>
+      ))}
+    </div>}
+    {page==="gr_to_em"&&<div>
+      <PH num="GREG → EMILY" title="Letters from Greg to Emily" sub="Say what needs to be said"/>
+      {[1,2,3,4,5].map(n=>(
+        <div key={n} style={{marginBottom:"24px"}}>
+          <div style={{fontSize:"11px",color:P.gold,fontFamily:"Arial,sans-serif",fontWeight:"bold",marginBottom:"8px",letterSpacing:".5px"}}>LETTER {n}</div>
+          <div style={{marginBottom:"6px"}}><SelfInput sk={`couple_letters_c_gr_em_title_${n}`} placeholder="What this letter is about (optional)..." P={P}/></div>
+          <JF id={`c_gr_em_${n}`} prompt="Dear Emily," lines={14}/>
+          <JF id={`c_gr_em_shared_${n}`} prompt="Have you shared this letter? If yes — what was Emily's response? How did it feel?" lines={4}/>
+        </div>
+      ))}
+    </div>}
+    {page==="unsent"&&<div>
+      <PH num="LETTERS NEVER SENT" title="The Unsent Letters" sub="The ones you write for yourself — not for the other person"/>
+      <Body>Sometimes a letter is not meant to be sent. It is meant to be written. To give your feelings a shape, a form, a place to exist outside your body. These letters are private. You do not owe them to anyone.</Body>
+      <JF id="c_em_unsent_1" prompt="Emily: A letter to someone from your past — what you never got to say:" lines={12}/>
+      <JF id="c_em_unsent_2" prompt="Emily: A letter to a version of yourself — past, present, or future:" lines={12}/>
+      <Div/>
+      <JF id="c_gr_unsent_1" prompt="Greg: A letter to someone from your past — what you never got to say:" lines={12}/>
+      <JF id="c_gr_unsent_2" prompt="Greg: A letter to a version of yourself — past, present, or future:" lines={12}/>
+    </div>}
+    {page==="future"&&<div>
+      <PH num="TO OUR FUTURE SELVES" title="Letters to the Future" sub="Seal these and open them together on a chosen date"/>
+      <IBox title="How This Works" items={["Write your letters now. Choose a date to open them — your next anniversary, a year from now, or when you both agree you are ready.","Write the date here: _______________________","These letters are not for today's you. They are for the you that exists on the other side of the work you are doing right now."]}/>
+      <JF id="c_future_em" prompt="Emily: Dear future us... (Write to the couple you are becoming. What do you hope is true? What do you want to remember? What do you want to tell them?)" lines={14}/>
+      <Div/>
+      <JF id="c_future_gr" prompt="Greg: Dear future us... (Write to the couple you are becoming. What do you hope is true? What do you want to remember? What do you want to tell them?)" lines={14}/>
+    </div>}
+  </WorkbookShell>);
+};
+
+// ═══════════════════════════════════════════════
+// SHARED PAGES (Daily + Mind Occupiers)
+// ═══════════════════════════════════════════════
+const DailyPages = ({P,prefix})=>{
+  const{JF,PH,IBox,GBox,Div,H2,Body,NumRow,MoodRow}=makeC(P,prefix);
+  const[day,setDay]=useState(1);
+  const pre=`${prefix}_${day}`;
+  return(<div>
+    <PH num="DAILY PAGES" title="Daily Check-In" sub="Morning and evening — use these every day"/>
+    <Body>Consistency in recovery is built through small daily rituals. Use a new day each morning. Come back in the evening.</Body>
+    <div style={{display:"flex",gap:"5px",flexWrap:"wrap",margin:"12px 0"}}>
+      {Array.from({length:30},(_,i)=>i+1).map(d=><button key={d} onClick={()=>setDay(d)} style={{padding:"4px 8px",borderRadius:"12px",border:`1px solid ${day===d?P.gold:P.border}`,background:day===d?P.gold+"30":"transparent",color:day===d?P.glight:P.muted,cursor:"pointer",fontSize:"11px",fontFamily:"Arial,sans-serif"}}>D{d}</button>)}
+    </div>
+    <IBox title={`Day ${day} — Morning Check-In`} items={[]} color={P.gold}/>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",margin:"10px 0"}}>
+      <div><div style={{fontSize:"11px",color:P.muted,fontFamily:"Arial,sans-serif",marginBottom:"5px",fontWeight:"bold",textTransform:"uppercase",letterSpacing:".5px"}}>Date</div><SelfInput sk={`${prefix}_${pre}_date`} P={P}/></div>
+    </div>
+    <NumRow id={`${pre}_sleep`} min={1} max={10} label="Sleep quality (1-10)"/>
+    <NumRow id={`${pre}_mood`} min={0} max={10} label="Mood (0-10)"/>
+    <JF id={`${pre}_morning`} prompt="What's on my mind this morning:" lines={3}/>
+    <JF id={`${pre}_intention`} prompt="Today's intention:" lines={2}/>
+    <JF id={`${pre}_grateful`} prompt="One thing I am genuinely grateful for today:" lines={2}/>
+    <Div/>
+    <GBox title={`Day ${day} — Evening Reflection`} items={[]}/>
+    <JF id={`${pre}_well`} prompt="What went well today:" lines={3}/>
+    <JF id={`${pre}_hard`} prompt="What was hard today:" lines={3}/>
+    <MoodRow id={`${pre}_craving`} items={["None","Yes — managed it","Yes — struggled","Yes — slipped"]} label="Cravings today?"/>
+    <JF id={`${pre}_craving_d`} prompt="If cravings happened — what triggered them? What did I do?" lines={3}/>
+    <JF id={`${pre}_forgive`} prompt="What do I need to forgive myself for today:" lines={2}/>
+    <JF id={`${pre}_proud`} prompt="One small thing I did today that I am proud of:" lines={2}/>
+  </div>);
+};
+
+const MindOccupiers = ({P,prefix})=>{
+  const{JF,PH,IBox,WBox,GBox,PBox,Div,H2,H3,Body,Tag}=makeC(P,prefix);
+  const[tab,setTab]=useState("trivia");
+  const tabs=[["trivia","✦ Trivia"],["ws","✦ Word Search"],["write","✦ Creative Writing"],["tot","✦ This or That"],["stories","✦ Story Starters"]];
+  return(<div>
+    <PH num="MIND OCCUPIERS" title="Mind Occupiers" sub="For the long days, the restless hours, the mind that needs somewhere to go"/>
+    <div style={{display:"flex",gap:"6px",flexWrap:"wrap",marginBottom:"20px"}}>
+      {tabs.map(([id,label])=><button key={id} onClick={()=>setTab(id)} style={{padding:"6px 13px",borderRadius:"6px",border:`1px solid ${tab===id?P.gold:P.border}`,background:tab===id?P.gold+"22":"transparent",color:tab===id?P.glight:P.muted,cursor:"pointer",fontSize:"12px",fontFamily:"Arial,sans-serif"}}>{label}</button>)}
+    </div>
+    {tab==="trivia"&&<div>
+      <IBox title="Brain Facts That Will Probably Surprise You" items={["1. Your brain uses ~20% of your body's total energy despite being only 2% of your body weight.","2. Neuroplasticity is real: the brain physically restructures itself based on experience. Recovery is a rewiring project.","3. The prefrontal cortex — responsible for judgment and impulse control — is not fully developed until age 25.","4. Sleep is when the brain's glymphatic system activates — a wash cycle that clears metabolic waste. Poor sleep actively slows healing.","5. The brain generates ~70,000 thoughts per day. Most are repetitions of the day before.","6. The amygdala (threat detection) activates in 12 milliseconds. Your rational mind takes 250 ms to catch up. This is why you react before you think. It's the hardware.","7. Boredom activates the same neural regions as physical pain. Build structure accordingly."]}/>
+      <JF id={`${prefix}_brain`} prompt="Which of these facts surprised you most? Which one do you want to remember?" lines={3}/>
+      <Div/>
+      <IBox title="The Actual Scorpion — Things You Might Not Know" items={["1. Scorpions have existed for ~430 million years — surviving every mass extinction event including the one that killed the dinosaurs.","2. Scorpions glow bright blue-green under ultraviolet light. They thrive in darkness.","3. A scorpion can survive being frozen in a block of ice — and thaw back to full activity. Its resilience is not about avoiding harsh conditions. It's about surviving them."]} color={P.purple}/>
+      <IBox title="The Eagle — Your Second Scorpio Symbol" items={["1. Eagles don't avoid storms. When a storm approaches, most birds flee. Eagles fly directly into it, using the updraft to soar above it. The obstacle literally lifts them higher.","2. Eagles can see 4–5 times farther than humans. Eagle vision = seeing the full terrain.","3. Eagles molt — shed their feathers and grow new ones — multiple times in their life. The process is uncomfortable. Then they come back stronger."]}/>
+      <GBox title="Famous People in Recovery Who Then Did Something" items={["Robert Downey Jr. — Multiple rehab stints. Sober since 2003. Then played Iron Man 10 times.","Eminem — Overdosed in 2007. Got sober. His most honest and acclaimed work came after sobriety.","Matthew Perry — 17 rehab stints. Spent his final years doing serious recovery advocacy.","Research shows: people with a history of addiction who reach long-term recovery report higher life satisfaction than the general population. Recovery doesn't just return you to baseline — for many people, it surpasses it."]}/>
+    </div>}
+    {tab==="ws"&&<div>
+      <H2>Word Search: Recovery Road</H2>
+      <Body>Find the hidden words. Click each word in the list below to mark it found.</Body>
+      <WordSearch P={P}/>
+    </div>}
+    {tab==="write"&&<div>
+      <H2>Creative Writing Prompts</H2>
+      <Body>These are not therapy. They are invitations to make something. Let your mind run.</Body>
+      {[["cw1","The Letter That Never Got Sent","Write a letter from yourself to someone from your past — someone you never said what needed to be said to. It doesn't have to be real. It doesn't have to be sent. Just write it."],["cw2","The Best Day That Hasn't Happened Yet","Describe in full detail — sensory, specific, present tense — the best day of your life that hasn't happened yet. Where are you? Who is with you? What does it feel like?"],["cw3","The Character Who Made It","Create a fictional character who shares your background. Write the scene where they realize, for the first time, that they actually made it."],["cw4","Five Years From Now","Write a letter from 5 years in the future. Recovery is solid. Something you couldn't have imagined is now your everyday life. What does the letter say?"],["cw5","The Thing Nobody Knows","Write about something true about you that almost nobody knows. You don't have to show this to anyone. Write it anyway."]].map(([id,title,desc])=>(
+        <div key={id}>
+          <H3>{title}</H3>
+          <p style={{fontSize:"13px",color:P.muted,fontStyle:"italic",marginBottom:"8px",fontFamily:"Georgia,serif"}}>{desc}</p>
+          <JF id={`${prefix}_${id}`} lines={12}/>
+          <Div/>
+        </div>
+      ))}
+    </div>}
+    {tab==="tot"&&<div>
+      <H2>This or That</H2>
+      <Body>No wrong answers. Quick choices that reveal something about who you are.</Body>
+      {[["tot1","Mountains","Ocean"],["tot2","Morning","Night"],["tot3","Silence","Music"],["tot4","Action","Stillness"],["tot5","Speaking first","Listening first"],["tot6","City","Nature"],["tot7","Plans","Spontaneity"],["tot8","Lead","Support"],["tot9","Think first","Feel first"],["tot10","Tell the truth brutally","Tell it gently"],["tot11","Let it go","Resolve it fully"],["tot12","Build from nothing","Improve what exists"]].map(([id,a,b])=>(
+        <div key={id} style={{margin:"8px 0",padding:"9px 12px",background:P.ic,borderRadius:"6px",border:`1px solid ${P.border}`,display:"flex",alignItems:"center",gap:"10px",flexWrap:"wrap"}}>
+          <TotBtn id={id} opt={a} prefix={prefix} P={P}/>
+          <span style={{color:P.dim,fontFamily:"Arial,sans-serif",fontSize:"12px"}}>or</span>
+          <TotBtn id={id} opt={b} prefix={prefix} P={P}/>
+          <TotLabel id={id} prefix={prefix} P={P}/>
+        </div>
+      ))}
+      <Div/>
+      <H2>If I Were...</H2>
+      {[["iw1","If I were an animal, I would be a __________ because"],["iw2","If I were a weather pattern, I would be __________ because"],["iw3","If I could give my 15-year-old self one piece of advice, it would be"],["iw4","If I could have one superpower right now, it would be"],["iw5","If this story has a good ending, it looks like"]].map(([id,q])=>(
+        <JF key={id} id={`${prefix}_${id}`} prompt={q} lines={2}/>
+      ))}
+    </div>}
+    {tab==="stories"&&<div>
+      <H2>Story Starters</H2>
+      <Body>Pick one. Start writing. Don't stop for at least 10 minutes. Don't edit. See where it goes.</Body>
+      {[["ss1","The last time I was completely honest with someone, I..."],["ss2","There's a room in my memory I've never fully opened. Behind the door is..."],["ss3","He walked out of treatment on day 47 and the first thing he did was..."],["ss4","The one conversation that changed everything happened when..."],["ss5","Five years from now, someone asks me how I made it through. I tell them..."]].map(([id,st])=>(
+        <div key={id}>
+          <p style={{fontSize:"13px",color:P.gold,fontStyle:"italic",marginBottom:"6px",fontFamily:"Georgia,serif"}}>"{st}"</p>
+          <JF id={`${prefix}_${id}`} lines={12}/>
+          <Div/>
+        </div>
+      ))}
+    </div>}
+  </div>);
+};
+
+// ═══════════════════════════════════════════════
+// WORKBOOK SHELL (sidebar + content)
+// ═══════════════════════════════════════════════
+const WorkbookShell = ({P,title,subtitle,pages,page,setPage,children})=>{
+  const[open,setOpen]=useState(true);
+  const[saved,setSaved]=useState(false);
+  return(
+    <div style={{display:"flex",height:"100%",overflow:"hidden"}}>
+      {/* Toggle */}
+      <button onClick={()=>setOpen(o=>!o)} style={{position:"fixed",top:"14px",left:open?"222px":"10px",zIndex:200,width:"30px",height:"30px",borderRadius:"50%",background:P.gold,border:"none",color:"#080808",fontSize:"14px",fontWeight:"bold",display:"flex",alignItems:"center",justifyContent:"center",transition:"left .25s ease",boxShadow:"0 2px 8px rgba(0,0,0,.6)",cursor:"pointer"}}>
+        {open?"✕":"☰"}
+      </button>
+      {/* Sidebar */}
+      <div style={{width:open?"260px":"0px",minWidth:open?"260px":"0px",background:P.panel,borderRight:open?`1px solid ${P.border}`:"none",display:"flex",flexDirection:"column",overflow:"hidden",transition:"width .25s ease,min-width .25s ease",flexShrink:0}}>
+        <div style={{padding:"18px 14px 12px",borderBottom:`1px solid ${P.border}`,flexShrink:0}}>
+          <div style={{fontSize:"9px",fontWeight:"bold",color:P.gold,letterSpacing:"2px",fontFamily:"Arial,sans-serif",textTransform:"uppercase",marginBottom:"4px"}}>{title}</div>
+          <div style={{fontSize:"14px",color:P.text,fontStyle:"italic"}}>{subtitle}</div>
+        </div>
+        <div className="scroll" style={{flex:1,padding:"6px 0"}}>
+          {pages.map(([id,label])=>(
+            <div key={id} onClick={()=>setPage(id)} style={{padding:"8px 14px",cursor:"pointer",borderLeft:`3px solid ${page===id?P.gold:"transparent"}`,background:page===id?P.hover:"transparent",color:page===id?P.glight:P.muted,fontSize:"12px",transition:"all .15s",display:"flex",alignItems:"center",gap:"8px",fontFamily:"Arial,sans-serif",whiteSpace:"nowrap"}}>
+              <span style={{width:"14px",textAlign:"center",fontSize:"10px",color:page===id?P.gold:P.dim}}>✦</span>
+              {label}
+            </div>
+          ))}
+        </div>
+        <div style={{padding:"10px 14px",borderTop:`1px solid ${P.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+          <span style={{fontSize:"10px",color:P.dim,fontFamily:"Arial,sans-serif"}}>Auto-saves ✦</span>
+          {saved&&<span style={{fontSize:"10px",color:P.title,fontFamily:"Arial,sans-serif",padding:"2px 8px",background:P.gc,borderRadius:"10px",border:`1px solid ${P.teal}`}}>✓ Saved</span>}
+        </div>
+      </div>
+      {/* Content */}
+      <div className="scroll" style={{flex:1,background:P.bg}}>
+        <div style={{maxWidth:"720px",margin:"0 auto",padding:"28px 22px 60px"}}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════
+// SHELF VIEW
+// ═══════════════════════════════════════════════
+const ShelfView = ({who,onBack})=>{
+  const[openBook,setOpenBook]=useState(null);
+  const isEmily = who==="emily";
+  const isGreg = who==="greg";
+  const isCouple = who==="together";
+  const P = isEmily?EP:isGreg?GP:CP;
+  const books = isGreg
+    ? [{id:"rehab",title:"Forged in the Fire",sub:"Residential Recovery Workbook",icon:"🔥",comp:GregRehab},{id:"shadow",title:"Descend to Rise",sub:"Shadow Work Journal",icon:"🌑",comp:GregShadow}]
+    : isEmily
+    ? [{id:"recovery",title:"Coming Home to Yourself",sub:"Recovery & Healing Workbook",icon:"🌸",comp:EmilyRecovery},{id:"shadow",title:"Into the Dark",sub:"Shadow Work Journal",icon:"✦",comp:EmilyShadow}]
+    : [{id:"journey",title:"Our Journey Together",sub:"Couples Guided Workbook",icon:"✦",comp:OurJourney},{id:"letters",title:"Letters Between Us",sub:"Write to Each Other",icon:"✉",comp:LettersBetweenUs}];
+
+  if(openBook){
+    const Book = books.find(b=>b.id===openBook)?.comp;
+    return(
+      <div style={{height:"100%",display:"flex",flexDirection:"column",background:P.bg}}>
+        <div style={{padding:"10px 14px",borderBottom:`1px solid ${P.border}`,display:"flex",alignItems:"center",gap:"12px",background:P.panel,flexShrink:0}}>
+          <button onClick={()=>setOpenBook(null)} style={{background:"transparent",border:`1px solid ${P.border}`,borderRadius:"6px",padding:"5px 12px",color:P.glight,fontSize:"12px",fontFamily:"Arial,sans-serif",cursor:"pointer"}}>← Back to Shelf</button>
+          <span style={{fontSize:"13px",color:P.muted,fontFamily:"Arial,sans-serif"}}>{books.find(b=>b.id===openBook)?.title}</span>
+        </div>
+        <div style={{flex:1,overflow:"hidden"}}>
+          <Book/>
+        </div>
+      </div>
+    );
+  }
+
+  const bgClass = isEmily?"marble-emily":isGreg?"marble-greg":"marble-couple";
+  const cardClass = isEmily?"card-emily":isGreg?"card-greg":"card-couple";
+  const shelfTitle = isGreg?"Greg's Shelf":isEmily?"Emily's Shelf":"Our Shelf";
+
+  return(
+    <div className={`${bgClass} scroll`} style={{height:"100%"}}>
+      <div style={{maxWidth:"600px",margin:"0 auto",padding:"28px 20px 60px"}}>
+        <button onClick={onBack} style={{background:"transparent",border:`1px solid ${P.border}`,borderRadius:"6px",padding:"6px 14px",color:P.glight,fontSize:"12px",fontFamily:"Arial,sans-serif",cursor:"pointer",marginBottom:"24px"}}>← Home</button>
+        <div style={{textAlign:"center",marginBottom:"32px"}}>
+          <div style={{fontSize:"44px",color:P.gold,marginBottom:"8px"}}>✦</div>
+          <h1 style={{fontSize:"30px",color:P.text,margin:"0 0 6px"}}>{shelfTitle}</h1>
+          <p style={{fontSize:"14px",color:P.muted,fontStyle:"italic",fontFamily:"Georgia,serif"}}>{isCouple?"Shared workbooks for Emily & Greg":"Your personal healing library"}</p>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:"14px"}}>
+          {books.map(book=>(
+            <div key={book.id} className={cardClass} onClick={()=>setOpenBook(book.id)} style={{padding:"20px 22px",borderRadius:"10px",cursor:"pointer",transition:"transform .15s",userSelect:"none"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"14px"}}>
+                <div style={{fontSize:"28px"}}>{book.icon}</div>
+                <div>
+                  <div style={{fontSize:"17px",color:P.text,fontWeight:"bold",marginBottom:"3px"}}>{book.title}</div>
+                  <div style={{fontSize:"12px",color:P.muted,fontFamily:"Arial,sans-serif"}}>{book.sub}</div>
+                </div>
+                <div style={{marginLeft:"auto",color:P.gold,fontSize:"18px"}}>→</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════
+// HOME SCREEN — Named Shelves
+// ═══════════════════════════════════════════════
+const Home = ({onSelect})=>(
+  <div className="scroll" style={{height:"100%",background:"radial-gradient(ellipse at 50% 30%,#1A0520 0%,#0A0005 60%)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px 20px"}}>
+    <div style={{textAlign:"center",marginBottom:"36px"}}>
+      <div style={{fontSize:"52px",color:"#C8956A",marginBottom:"10px"}}>✦</div>
+      <h1 style={{fontSize:"32px",color:"#F0EAE8",margin:"0 0 6px",fontWeight:"bold"}}>The Healing Library</h1>
+      <p style={{fontSize:"14px",color:"#9A7880",fontStyle:"italic",fontFamily:"Georgia,serif"}}>Emily & Greg's Personal Workbooks</p>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:"14px",width:"100%",maxWidth:"380px"}}>
+      {[
+        {id:"emily",label:"Emily",sub:"My personal shelf",bg:"linear-gradient(135deg,rgba(200,149,106,.12) 0%,rgba(138,20,50,.2) 100%),#1A0008",border:"#8B1535",gold:"#C8956A",icon:"🌸"},
+        {id:"greg",label:"Greg",sub:"My personal shelf",bg:"linear-gradient(135deg,rgba(201,150,58,.12) 0%,rgba(55,14,90,.22) 100%),#050008",border:"#3A1060",gold:"#C9963A",icon:"🔥"},
+        {id:"together",label:"Together",sub:"Our shared workbooks",bg:"linear-gradient(135deg,rgba(200,149,106,.1) 0%,rgba(26,106,72,.15) 100%),#03080A",border:"#1A6A4A",gold:"#C8956A",icon:"✦"},
+      ].map(shelf=>(
+        <div key={shelf.id} onClick={()=>onSelect(shelf.id)} style={{background:shelf.bg,border:`1px solid ${shelf.border}`,borderRadius:"12px",padding:"18px 20px",cursor:"pointer",transition:"transform .15s",userSelect:"none"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"14px"}}>
+            <div style={{fontSize:"26px"}}>{shelf.icon}</div>
+            <div>
+              <div style={{fontSize:"20px",color:"#F0EAE8",fontWeight:"bold",marginBottom:"2px"}}>{shelf.label}</div>
+              <div style={{fontSize:"12px",color:"#9A7880",fontFamily:"Arial,sans-serif"}}>{shelf.sub}</div>
+            </div>
+            <div style={{marginLeft:"auto",color:shelf.gold,fontSize:"20px"}}>→</div>
+          </div>
+        </div>
+      ))}
+    </div>
+    <p style={{marginTop:"28px",fontSize:"11px",color:"#4A2030",fontFamily:"Arial,sans-serif",textAlign:"center"}}>💾 All entries save automatically to this device</p>
+  </div>
+);
+
+// ═══════════════════════════════════════════════
+// ROOT APP
+// ═══════════════════════════════════════════════
+function App(){
+  const[shelf,setShelf]=useState(null);
+
+  // Inject styles
+  useEffect(()=>{
+    const el=document.createElement("style");
+    el.textContent=STYLES;
+    document.head.appendChild(el);
+    return()=>document.head.removeChild(el);
+  },[]);
+
+  if(!shelf) return <Home onSelect={setShelf}/>;
+
+  return(
+    <ShelfView
+      who={shelf}
+      onBack={()=>setShelf(null)}
+    />
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
